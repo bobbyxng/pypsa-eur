@@ -1,0 +1,102 @@
+%YAML 1.1
+---
+# yaml-language-server: $schema=./schema.default.json
+
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#top-level-configuration
+version: v2026.02.0
+
+remote:
+  ssh: zecm
+  path: scratch/projects/resilient-islands
+
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
+run:
+  prefix: ""
+  name: "resilient-islands"
+  scenarios:
+    enable: false
+    file: config/scenarios.yaml
+  disable_progressbar: false
+  shared_resources:
+    policy: false
+    exclude: []
+  use_shadow_directory: false
+
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#foresight
+foresight: overnight
+
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#scenario
+# Wildcard docs in https://pypsa-eur.readthedocs.io/en/latest/wildcards.html
+scenario:
+  clusters:
+  - 128
+  opts:
+  - ''
+  sector_opts:
+  - ''
+  planning_horizons:
+  - 2050
+
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#electricity
+electricity:
+  voltages:
+  - 220.0
+  - 300.0
+  - 330.0
+  - 380.0
+  - 400.0
+  - 500.0
+  - 750.0
+  base_network: osm
+  gaslimit_enable: false
+  gaslimit: false
+  co2limit_enable: false
+  co2limit: 77500000.0
+  co2base: 1487000000.0
+  extendable_carriers:
+    Generator:
+    - solar
+    - "solar-hsat"
+    - onwind
+    - "offwind-ac"
+    - "offwind-dc"
+    - "offwind-float"
+    - OCGT
+    - CCGT
+    StorageUnit: [] # battery, H2
+    Store:
+    - battery
+    - H2
+    Link: [] # H2 pipeline
+  powerplants_filter: "(DateOut > 2025 or DateOut != DateOut) and (DateIn < 2026 or DateIn != DateIn)"
+  custom_powerplants: false
+  everywhere_powerplants: []
+  renewable_carriers:
+  - solar
+  - onwind
+  - "offwind-ac"
+  - "offwind-dc"
+  - hydro
+  transmission_limit: vopt
+
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#transmission_projects
+transmission_projects:
+  enable: true
+
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#clustering
+clustering:
+  mode: busmap
+  administrative:
+    level: 1
+  temporal:
+    resolution_elec: false
+    resolution_sector: 365H
+
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#solving
+solving:
+  solver:
+    name: gurobi
+    options: gurobi-default
+  mem_mb: 128000
+  memory_logging_frequency: 5 # in seconds
+  runtime: 48h #runtime in humanfriendly style https://humanfriendly.readthedocs.io/en/latest/
