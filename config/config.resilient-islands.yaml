@@ -6,7 +6,7 @@
 version: v2026.02.0
 
 remote:
-  ssh: zecm
+  ssh: z1
   path: scratch/projects/resilient-islands
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
