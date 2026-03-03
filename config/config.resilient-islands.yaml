@@ -29,13 +29,34 @@ foresight: overnight
 # Wildcard docs in https://pypsa-eur.readthedocs.io/en/latest/wildcards.html
 scenario:
   clusters:
-  - 128
+  - 16
   opts:
   - ''
   sector_opts:
   - ''
   planning_horizons:
   - 2050
+
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#countries
+countries:
+- AT
+- BE
+- CH
+- CZ
+- DE
+- DK
+- ES
+- FR
+- IT
+- NL
+- PL
+- PT
+
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#snapshots
+snapshots:
+  start: "2013-01-01"
+  end: "2013-07-01"
+  inclusive: left
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#electricity
 electricity:
@@ -77,7 +98,7 @@ electricity:
   - "offwind-ac"
   - "offwind-dc"
   - hydro
-  transmission_limit: vopt
+  transmission_limit: v1.3
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#transmission_projects
 transmission_projects:
@@ -89,8 +110,8 @@ clustering:
   administrative:
     level: 1
   temporal:
-    resolution_elec: false
-    resolution_sector: 365H
+    resolution_elec: 4h
+    resolution_sector: false
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#solving
 solving:
