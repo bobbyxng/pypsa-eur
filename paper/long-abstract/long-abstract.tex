@@ -1,0 +1,125 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage{todonotes}
+\usepackage{hyperref}
+
+\title{The cost of self-sufficiency: Robust energy system planning under prolonged transmission blackouts \textit{(working title)}}
+\author{Bobby Xiong, Iegor Riepin, Tom Brown,\\maybe someone else who wants to join}
+\date{}
+
+\begin{document}
+\maketitle
+
+% ──────────────────────────────────────────────
+\section{Abstract}
+% ──────────────────────────────────────────────
+The 2025 Iberian blackout, systematic attacks on Ukrainian energy infrastructure, and increasingly severe climate-driven extreme weather have exposed the vulnerability of European electricity systems to prolonged transmission outages. While interconnection is widely recognised as a pillar of energy security, these events raise an uncomfortable question: what happens when the grid itself fails for longer time periods, forcing each region to rely on its own resources? This research develops a capacity expansion model that determines cost-optimal investment in generation, storage, and transmission capacity while guaranteeing system operability during worst-case transmission blackouts. We employ Adaptive Robust Optimization (ARO) solved via Column and Constraint Generation (C\&CG) to endogenously identify the most damaging blackout timing. The uncertainty is parameterised by a budget $\Gamma$ controlling the blackout duration: all transmission lines fail simultaneously during a contiguous window of up to $\Gamma$ days, and the optimisation identifies when this window would be most damaging. By sweeping $\Gamma$ from 1 to 14~days, we trace out the \emph{cost of resilience} as a function of blackout duration and characterise how the optimal technology mix shifts from batteries and renewables toward dispatchable generation and local self-sufficiency. The approach is validated on a simplified test network using enumeration-based cross-checking before scaling to a European network via PyPSA-Eur.
+
+% ──────────────────────────────────────────────
+\section{Problem description}
+% ──────────────────────────────────────────────
+When transmission infrastructure fails on a large scale, whether through extreme weather, technical cascading failures, or deliberate attack, regions can lose supply entirely. The 2025 Iberian blackout, the sustained targeting of Ukrainian energy infrastructure, and the growing frequency of extreme weather events all underscore that prolonged, large-scale transmission outages are not hypothetical scenarios anymore.
+
+The energy systems modelling literature has made significant progress in incorporating weather-driven uncertainty into long-term planning, for instance through stochastic programming or robust optimisation against endogenously modelled Dunkelflaute events \cite{berneckerAdaptiveRobustOptimization2025} or pipeline planning \cite{riepinAdaptiveRobustOptimization2022}. However, these approaches typically treat transmission infrastructure as available, perturbing only generation-side parameters such as renewable capacity factors. Far less attention has been paid to scenarios in which transmission itself is the point of failure; in the most extreme case, a system-wide blackout would force each region to survive on its own resources.
+
+We address the following research question: \textbf{How does the cost of resilience scale with the duration of blackout a system must withstand?} Concretely, we seek the minimum-cost investment plan in generation, storage, and transmission capacity for a net-zero European electricity system in 2050 such that every node in the network can maintain supply adequacy during a worst-case blackout of up to $\Gamma$ contiguous days, effectively requiring temporary regional self-sufficiency.
+
+The uncertainty is structural rather than parametric: we do not perturb continuous parameters (e.g.\ demand levels or wind capacity factors). Instead, we model the binary event of collective line failure. The optimisation endogenously identifies \emph{when} a blackout would be most damaging; the planner must invest \emph{before} this event materialises, while dispatch decisions adapt \emph{after} observing the blackout timing. This two-stage structure with adaptive recourse motivates the use of ARO.
+
+% ──────────────────────────────────────────────
+\section{Methodology}
+% ──────────────────────────────────────────────
+
+\subsection{Trilevel min-max-min formulation}
+
+The problem is cast as a two-stage ARO with a trilevel min-max-min structure \cite{berneckerAdaptiveRobustOptimization2025,conejoInvestmentElectricityGeneration2016}:
+%
+\begin{equation}\label{eq:trilevel}
+  \min_{\mathbf{x} \in \mathcal{X}} \;\; c^{\top} \mathbf{x} \;+\; \max_{\mathbf{w} \in \mathcal{W}} \;\; \min_{\mathbf{y} \in \mathcal{Y}(\mathbf{x}, \mathbf{w})} \;\; d^{\top} \mathbf{y}
+\end{equation}
+%
+where:
+\begin{itemize}[nosep]
+  \item $\mathbf{x}$: first-stage \textbf{investment} decisions (generation, storage, and transmission capacities), with $c^\top \mathbf{x}$ the annualised investment cost and $\mathcal{X}$ encoding capacity bounds;
+  \item $\mathbf{w}$: \textbf{adversary} decisions (binary blackout indicators $w_t \in \{0,1\}$ for each day $t$), constrained to the uncertainty set $\mathcal{W}$;
+  \item $\mathbf{y}$: second-stage \textbf{dispatch} decisions (generation, storage charge/discharge, power flows, load shedding), with $d^\top \mathbf{y}$ the operational cost including a penalty for unserved energy.
+\end{itemize}
+
+\subsection{Uncertainty set (second-level problem)}
+Proposal to stick with blackout timing as main research question (3.2.1), 3.2.2 is a potential, interesting extension if time allows or for a dedicated research paper.
+\subsubsection{Blackout timing (and duration)}
+The uncertainty set $\mathcal{W}$ is defined over binary variables with a cardinality constraint (limiting the number of days that can be blacked out) and a contiguity requirement ensuring they form an uninterrupted block:
+%
+\begin{equation}\label{eq:unc_set}
+  \mathcal{W} = \left\{ \mathbf{w} \in \{0,1\}^{|T|} \;\middle|\; \sum_{t} w_t \leq \Gamma,\;\; w_t \text{ form a single contiguous block} \right\}
+\end{equation}
+%
+When $w_t = 1$, all transmission lines are disabled at time $t$, forcing each node to rely on local generation and storage. The contiguity constraint reflects plausible failure modes such as storms or sustained cyberattacks, though we do not model their likelihood or assess the relative plausibility of specific causes. Note that the timing is identified endogenously, but the duration $\Gamma$ is an exogenous parameter that we sweep across a range of values (e.g.\ 1 to 14 days) to trace out the cost curve.
+\todo[inline]{Open note: Potentially assess the effect of relaxing the contiguity assumption on blackout timing (i.e., uncertainty budget spread throughout the year, no consecutive days). This would serve as a theoretical upper bound on resilience cost.}
+
+\subsubsection{Location and number of line failures}
+\textit{(Optional extension/Future work)} The current formulation assumes a system-wide blackout where all lines fail simultaneously. A natural extension is to allow for partial blackouts affecting only subsets of lines, with the adversary choosing which lines to disable subject to an uncertainty budget (e.g.\ up to $K$ lines can be disabled at any time). This would capture more targeted attack scenarios or geographically localised extreme weather impacts. However, this extension significantly increases the combinatorial complexity of the uncertainty set, as the adversary must choose both timing and which lines to disable. This approach would endogenously identify the most damaging line failures/weak points in the network.
+
+
+\subsection{Dispatch constraints (third-level problem)}
+
+The feasible set $\mathcal{Y}(\mathbf{x}, \mathbf{w})$ is defined by standard power system dispatch constraints, linking second-stage variables to first-stage capacities and the adversary's blackout decision:
+%
+\begin{itemize}[nosep]
+  \item Nodal energy balance (generation $+$ storage $+$ net flow $+$ load shedding $=$ demand)
+  \item Generator output bounded by invested capacity and time-varying capacity factors
+  \item Storage charge/discharge bounded by power capacity; state-of-charge bounded by energy capacity
+  \item Intertemporal SOC evolution with charging/discharging efficiencies and cyclic boundary conditions
+  \item Transmission flow bounded by invested line capacity, disabled when $w_t = 1$:
+    \begin{equation}
+      |f_{l,t}| \leq \overline{F}_l \cdot (1 - w_t) \qquad \forall\, l,\, t
+    \end{equation}
+  \item Load shedding bounded by demand, penalised at the Value of Lost Load (VOLL)
+\end{itemize}
+
+\subsection{Solution via Column and Constraint Generation}
+
+The trilevel problem~\eqref{eq:trilevel} is solved iteratively using the C\&CG algorithm. In each iteration $k$:
+\begin{enumerate}[nosep]
+  \item \textbf{Master problem}: solve the outer min over investments $\mathbf{x}$ and dispatch for all previously identified scenarios $\mathbf{w}^{(1)}, \dots, \mathbf{w}^{(k)}$, yielding a lower bound.
+  \item \textbf{Subproblem}: fix investments $\mathbf{x}^{(k)}$ and solve the inner max-min to find the worst-case blackout $\mathbf{w}^{(k+1)}$, yielding an upper bound. The inner minimization (dispatch LP) is dualised via strong duality to convert the max-min into a single maximization (MILP). Bilinear terms arising from the product of dual flow variables and binary blackout indicators are linearised using standard Big-M reformulations.
+\end{enumerate}
+
+The algorithm adds one new scenario (columns and constraints) per iteration, typically converging in few iterations for problems of this structure.
+
+\subsection{Validation by enumeration}
+
+On a small test network, the contiguous uncertainty set has a manageable number of feasible blackout windows ($|T| - \Gamma + 1$ candidates). We exploit this by independently solving the adversary subproblem via both enumeration and dualisation, and verify that both identify the same worst-case window and yield the same objective value.
+
+% ──────────────────────────────────────────────
+\section{Expected results}
+% ──────────────────────────────────────────────
+
+The primary output is a \textbf{resilience cost curve}: total system cost as a function of $\Gamma$ (blackout duration from 1 to 14 days). We expect:
+\begin{itemize}[nosep]
+\item \textbf{$\Gamma = 1$--$2$ days}: battery storage alone may suffice to bridge short outages; modest cost increase over a no-resilience baseline.
+\item \textbf{$\Gamma = 3$--$7$ days}: storage capacity saturates; the model increasingly invests in local dispatchable generation (gas) and additional renewable capacity. Costs rise steeply.
+\item \textbf{$\Gamma = 7$--$14$ days}: each additional day of self-sufficiency demands further dispatchable backup at high-demand nodes. The cost curve may flatten if sufficient firm capacity is already built for shorter durations, but could remain steep if storage-to-generation substitution is expensive. The shape of this segment is itself a key finding.
+\end{itemize}
+
+Beyond system cost, two additional outputs carry significant policy value. First, the optimisation endogenously identifies the \textbf{worst-case timing}: the periods during which a blackout would be most damaging to the system, typically combining high demand with low renewable availability following intervals that deplete storage. Visualising these critical periods across different $\Gamma$ values reveals temporal vulnerabilities that policymakers and system operators should prioritise in contingency planning. Second, the \textbf{investment mix transition} shows how the optimal portfolio shifts from transmission-reliant (no resilience requirement) to storage-heavy (short blackouts) to dispatchable-generation-heavy (long blackouts), indicating which technologies become critical at each resilience level or level of preparedness.
+
+% ──────────────────────────────────────────────
+\section{Key references}
+% ──────────────────────────────────────────────
+
+\nocite{*}
+
+\renewcommand{\refname}{}  % for article class
+% \renewcommand{\bibname}{} % for book/report class
+
+\bibliographystyle{plain}
+% \bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}
