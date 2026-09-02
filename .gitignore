@@ -84,7 +84,6 @@ merger-todos.md
 dev/*
 
 # ai coding tools
-CLAUDE.md
 .claude/
 .github/copilot-instructions.md
 CLAUDE.local.md
