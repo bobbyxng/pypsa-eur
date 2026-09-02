@@ -39,10 +39,26 @@ REGION_COLS = ["geometry", "name", "x", "y", "country"]
 PYPSA_V1 = bool(re.match(r"^1\.\d", pypsa.__version__))
 
 
-def get_scenarios(run):
+def _find_pypsaro_root(start: Path) -> Path:
+    """Walk upward from ``start`` to find the PyPSARO repo root.
+
+    Identified by ``.gitmodules``, which only exists at PyPSARO's root (this
+    submodule's checkout has no ``.gitmodules`` of its own). Searching for the
+    marker avoids hardcoding how many directories separate this submodule
+    from PyPSARO's root, which would silently break if that nesting changes.
+    """
+    for parent in [start, *start.parents]:
+        if (parent / ".gitmodules").exists():
+            return parent
+    raise RuntimeError(f"could not find PyPSARO root above {start}")
+
+
+def get_scenarios(run, basedir=None):
     scenario_config = run.get("scenarios", {})
     if run["name"] and scenario_config.get("enable"):
         fn = Path(scenario_config["file"])
+        if not fn.is_absolute() and basedir is not None:
+            fn = _find_pypsaro_root(Path(basedir)) / fn
         if fn.exists():
             scenarios = yaml.safe_load(fn.read_text())
             if run["name"] == "all":

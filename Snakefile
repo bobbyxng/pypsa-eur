@@ -36,7 +36,7 @@ if Path("config/config.yaml").exists():
 validate_config(config)
 
 run = config["run"]
-scenarios = get_scenarios(run)
+scenarios = get_scenarios(run, workflow.basedir)
 
 for scenario_name, scenario_overrides in scenarios.items():
     merged = copy.deepcopy(config)
