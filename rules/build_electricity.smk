@@ -604,7 +604,7 @@ rule add_transmission_projects_and_dlr:
         benchmarks("add_transmission_projects_and_dlr")
     threads: 1
     resources:
-        mem_mb=4000,
+        mem_mb=8000,
     params:
         transmission_projects=config_provider("transmission_projects"),
         dlr=config_provider("lines", "dynamic_line_rating"),
