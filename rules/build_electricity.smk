@@ -260,7 +260,7 @@ rule build_ship_raster:
     benchmark:
         benchmarks("build_ship_raster")
     resources:
-        mem_mb=8000,
+        mem_mb=12000,
     message:
         "Building ship density raster"
     script:
@@ -566,7 +566,7 @@ rule build_transmission_projects:
         benchmarks("build_transmission_projects")
     threads: 1
     resources:
-        mem_mb=4000,
+        mem_mb=8000,
     params:
         transmission_projects=config_provider("transmission_projects"),
         line_factor=config_provider("lines", "length_factor"),
