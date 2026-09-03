@@ -658,6 +658,16 @@
       "description": "Configuration for `co2_budget` settings.",
       "type": "object"
     },
+    "ContainerConfig": {
+      "description": "Configuration for Snakemake's own apptainer/singularity software-deployment-method.",
+      "properties": {
+        "image": {
+          "default": "",
+          "description": "Path (or docker://-style URI) to the Singularity/Apptainer image used for Snakemake's own per-job `container:` wrapping when --software-deployment-method apptainer is requested; empty = no container (opt-in only). Bind mounts and other apptainer-args are configured outside the repo, in whichever Snakemake profile requests apptainer. Set this in whichever --configfile already configures the rest of the run.",
+          "type": "string"
+        }
+      }
+    },
     "ConventionalConfig": {
       "additionalProperties": true,
       "description": "Configuration for `conventional` settings.",
@@ -8272,6 +8282,16 @@
         "path": {
           "default": "",
           "description": "Optionally specify the file path within the remote cluster to be synchronized.",
+          "type": "string"
+        }
+      }
+    },
+    "container": {
+      "description": "Configuration for Snakemake's own apptainer/singularity software-deployment-method.",
+      "properties": {
+        "image": {
+          "default": "",
+          "description": "Path (or docker://-style URI) to the Singularity/Apptainer image used for Snakemake's own per-job `container:` wrapping when --software-deployment-method apptainer is requested; empty = no container (opt-in only). Bind mounts and other apptainer-args are configured outside the repo, in whichever Snakemake profile requests apptainer. Set this in whichever --configfile already configures the rest of the run.",
           "type": "string"
         }
       }

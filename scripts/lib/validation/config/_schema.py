@@ -67,6 +67,22 @@ class RemoteConfig(ConfigModel):
     )
 
 
+class ContainerConfig(ConfigModel):
+    """Configuration for Snakemake's own apptainer/singularity software-deployment-method."""
+
+    image: str = Field(
+        "",
+        description=(
+            "Path (or docker://-style URI) to the Singularity/Apptainer image used for "
+            "Snakemake's own per-job `container:` wrapping when --software-deployment-method "
+            "apptainer is requested; empty = no container (opt-in only). Bind mounts and "
+            "other apptainer-args are configured outside the repo, in whichever Snakemake "
+            "profile requests apptainer. Set this in whichever --configfile already "
+            "configures the rest of the run."
+        ),
+    )
+
+
 class ConfigSchema(BaseModel):
     """
     Combined configuration schema for PyPSA-EUR.
@@ -98,6 +114,10 @@ class ConfigSchema(BaseModel):
     remote: RemoteConfig = Field(
         default_factory=RemoteConfig,
         description="Configuration for remote workflow execution",
+    )
+    container: ContainerConfig = Field(
+        default_factory=ContainerConfig,
+        description="Container image selection for Snakemake's apptainer/singularity integration",
     )
 
     run: RunConfig = Field(

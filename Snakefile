@@ -8,6 +8,7 @@ import yaml
 from os.path import normpath, exists, join
 from shutil import copyfile, move, rmtree
 from dotenv import load_dotenv
+from snakemake.settings.types import DeploymentMethod
 from snakemake.utils import min_version, update_config
 
 load_dotenv()
@@ -73,6 +74,27 @@ wildcard_constraints:
     opts=r"[-+a-zA-Z0-9\.]*",
     sector_opts=r"[-+a-zA-Z0-9\.\s]*",
     planning_horizons=r"[0-9]{4}",
+
+
+# Container image for Snakemake's own per-job apptainer/singularity wrapping
+# (--software-deployment-method apptainer). Empty by default: an unconfigured
+# invocation runs every job natively. Requesting apptainer without an image
+# configured would otherwise silently run every job uncontainerized instead
+# of failing (Workflow.global_container()'s truthy check treats "" the same
+# as no container) -- guard against that here. Set container.image in
+# whichever --configfile already configures the rest of the run.
+container_image = config["container"]["image"]
+if (
+    not container_image
+    and DeploymentMethod.APPTAINER in workflow.deployment_settings.deployment_method
+):
+    raise ValueError(
+        "software-deployment-method includes apptainer but container.image is "
+        "empty. Set container.image in your --configfile."
+    )
+
+
+container: container_image or None
 
 
 include: "rules/common.smk"

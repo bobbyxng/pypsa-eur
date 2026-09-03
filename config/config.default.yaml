@@ -18,6 +18,10 @@ remote:
   ssh: ""
   path: ""
 
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#container
+container:
+  image: ""
+
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
   prefix: ""
