@@ -769,7 +769,7 @@ rule build_solar_thermal_profiles:
         benchmarks("build_solar_thermal_profiles/total_{clusters}")
     threads: 16
     resources:
-        mem_mb=20000,
+        mem_mb=32000,
     params:
         snapshots=config_provider("snapshots"),
         drop_leap_day=config_provider("enable", "drop_leap_day"),
@@ -791,7 +791,7 @@ rule build_eurostat_balances:
         benchmarks("build_eurostat_balances")
     threads: 1
     resources:
-        mem_mb=6000,
+        mem_mb=8000,
     message:
         "Building Eurostat energy balances"
     script:
@@ -965,7 +965,7 @@ rule build_biomass_transport_costs:
         benchmarks("build_biomass_transport_costs")
     threads: 1
     resources:
-        mem_mb=6000,
+        mem_mb=8000,
     message:
         "Building biomass transport cost"
     script:
@@ -1125,7 +1125,7 @@ rule build_industrial_production_per_country:
         benchmarks("build_industrial_production_per_country")
     threads: 8
     resources:
-        mem_mb=6000,
+        mem_mb=16000,
     params:
         industry=config_provider("industry"),
         countries=config_provider("countries"),
