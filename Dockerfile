@@ -52,7 +52,17 @@ ENV CONDA_PREFIX=/app/.pixi/envs/default \
 # *cluster's* singularity/apptainer binary needs to run when bind-mounted
 # into this container (for the driver-runs-inside-the-container case), same
 # fix as the parent repo's Dockerfile and same reason.
-RUN apt-get update && apt-get install -y --no-install-recommends libsubid5 \
+#
+# fuse3 + squashfs-tools -- same fix as the parent repo's Dockerfile, same
+# reason: a Slurm-dispatched job running inside this image needs its own
+# per-rule apptainer wrapping to mount/extract this *same* .sif image again,
+# from inside the container, and neither of singularity's two mount
+# strategies (FUSE via fusermount, or extraction via unsquashfs) has its
+# binary in this slim base otherwise. Confirmed live via a FATAL
+# "extraction failed: exec: /usr/bin/unsquashfs: ... no such file" once the
+# FUSE path failed first for the same missing-fusermount reason.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libsubid5 fuse3 squashfs-tools \
  && rm -rf /var/lib/apt/lists/*
 
 CMD ["bash"]
