@@ -121,7 +121,7 @@ elif (CORINE_DATASET := dataset_version("corine"))["source"] in ["primary"]:
             logs("retrieve_corine_primary.log"),
         retries: 2
         resources:
-            mem_mb=1000,
+            mem_mb=6000,
         params:
             apikey=os.environ.get("CORINE_API_TOKEN", ""),
         message:
@@ -344,7 +344,7 @@ if (
             "logs/retrieve_bidding_zones_electricitymaps.log",
         retries: 2
         resources:
-            mem_mb=1000,
+            mem_mb=6000,
         run:
             copy2(input["geojson"], output["geojson"])
 
@@ -360,7 +360,7 @@ if (BIDDING_ZONES_ENTSOEPY_DATASET := dataset_version("bidding_zones_entsoepy"))
             "logs/retrieve_bidding_zones_entsoepy.log",
         retries: 2
         resources:
-            mem_mb=1000,
+            mem_mb=6000,
         run:
             import entsoe
             import geopandas as gpd
@@ -397,7 +397,7 @@ if (CUTOUT_DATASET := dataset_version("cutout"))["source"] in [
             "logs/retrieve_cutout/{cutout}.log",
         retries: 2
         resources:
-            mem_mb=5000,
+            mem_mb=6000,
         message:
             "Retrieving cutout data for {wildcards.cutout}"
         run:
@@ -496,7 +496,7 @@ if (OPSD_DEMAND_DATA := dataset_version("opsd_electricity_demand"))["source"] in
             "logs/retrieve_electricity_demand_opsd.log",
         retries: 2
         resources:
-            mem_mb=5000,
+            mem_mb=6000,
         params:
             versions=["2019-06-05", "2020-10-06"],
         message:
@@ -573,7 +573,7 @@ if (ENTSOE_DEMAND_DATA := dataset_version("entsoe_electricity_demand"))["source"
             "logs/retrieve_electricity_demand_entsoe_{country}.log",
         retries: 2
         resources:
-            mem_mb=2000,
+            mem_mb=6000,
         params:
             entsoe_token=os.environ.get("ENTSOE_API_TOKEN", ""),
         message:
@@ -627,7 +627,7 @@ if (NESO_DEMAND_DATA := dataset_version("neso_electricity_demand"))["source"] in
             "logs/retrieve_electricity_demand_neso.log",
         retries: 2
         resources:
-            mem_mb=5000,
+            mem_mb=6000,
         message:
             "Retrieving electricity demand data from NESO from build source"
         script:
@@ -759,7 +759,7 @@ if (SHIP_RASTER_DATASET := dataset_version("ship_raster"))["source"] in [
             "logs/retrieve_ship_raster.log",
         retries: 2
         resources:
-            mem_mb=5000,
+            mem_mb=6000,
         message:
             "Retrieving shipping raster data"
         run:
@@ -1158,7 +1158,7 @@ if (INSTRAT_CO2_PRICES_DATASET := dataset_version("instrat_co2_prices"))["source
             "logs/retrieve_co2_prices.log",
         retries: 2
         resources:
-            mem_mb=5000,
+            mem_mb=6000,
         message:
             "Retrieving CO2 emission allowances price in EU ETS system"
         run:
@@ -1255,7 +1255,7 @@ if OSM_DATASET["source"] in ["archive"]:
             "logs/retrieve_osm_archive.log",
         threads: 1
         resources:
-            mem_mb=500,
+            mem_mb=6000,
         message:
             "Retrieving OSM archive data"
         run:
@@ -1297,7 +1297,7 @@ if OSM_DATASET_INCUMBENT["source"] in ["archive"] and OSM_DATASET_INCUMBENT[
             "logs/retrieve_osm_archive_incumbent.log",
         threads: 1
         resources:
-            mem_mb=500,
+            mem_mb=6000,
         message:
             "Retrieving OSM archive incumbent data"
         run:
@@ -1368,7 +1368,7 @@ elif NATURA_DATASET["source"] == "build":
         log:
             "logs/build_natura.log",
         resources:
-            mem_mb=5000,
+            mem_mb=6000,
         message:
             "Building Natura 2000 raster data"
         script:
@@ -1623,7 +1623,7 @@ if (MOBILITY_PROFILES_DATASET := dataset_version("mobility_profiles"))["source"]
             "benchmarks/retrieve_mobility_profiles"
         threads: 1
         resources:
-            mem_mb=1000,
+            mem_mb=6000,
         message:
             "Retrieving mobility profiles data"
         run:

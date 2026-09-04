@@ -33,7 +33,7 @@ if config["foresight"] != "perfect":
             benchmarks("plot_power_network_clustered/base_s_{clusters}")
         threads: 1
         resources:
-            mem_mb=4000,
+            mem_mb=6000,
         params:
             plotting=config_provider("plotting"),
         message:
@@ -422,7 +422,7 @@ rule make_cumulative_costs:
         RESULTS + "benchmarks/make_cumulative_costs"
     threads: 1
     resources:
-        mem_mb=4000,
+        mem_mb=6000,
     params:
         scenario=config_provider("scenario"),
     message:
@@ -570,7 +570,7 @@ rule build_ambient_air_temperature_yearly_average:
         )
     threads: 1
     resources:
-        mem_mb=5000,
+        mem_mb=6000,
     script:
         scripts("build_ambient_air_temperature_yearly_average.py")
 

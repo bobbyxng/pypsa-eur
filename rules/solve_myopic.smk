@@ -36,7 +36,7 @@ rule add_existing_baseyear:
         planning_horizons=config["scenario"]["planning_horizons"][0],  #only applies to baseyear
     threads: 1
     resources:
-        mem_mb=3000,
+        mem_mb=6000,
     params:
         baseyear=config_provider("scenario", "planning_horizons", 0),
         sector=config_provider("sector"),

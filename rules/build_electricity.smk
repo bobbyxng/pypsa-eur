@@ -20,7 +20,7 @@ rule build_electricity_demand:
     benchmark:
         benchmarks("build_electricity_demand")
     resources:
-        mem_mb=5000,
+        mem_mb=6000,
     params:
         snapshots=config_provider("snapshots"),
         drop_leap_day=config_provider("enable", "drop_leap_day"),
@@ -95,7 +95,7 @@ rule base_network:
         benchmarks("base_network")
     threads: 4
     resources:
-        mem_mb=2000,
+        mem_mb=6000,
     params:
         countries=config_provider("countries"),
         snapshots=config_provider("snapshots"),
@@ -121,7 +121,7 @@ rule build_osm_boundaries:
         "logs/build_osm_boundaries_{country}.log",
     threads: 1
     resources:
-        mem_mb=1500,
+        mem_mb=6000,
     message:
         "Building OSM boundaries for {wildcards.country}"
     script:
@@ -138,7 +138,7 @@ rule build_bidding_zones:
         logs("build_bidding_zones.log"),
     threads: 1
     resources:
-        mem_mb=1500,
+        mem_mb=6000,
     params:
         countries=config_provider("countries"),
         remove_islands=config_provider(
@@ -164,7 +164,7 @@ rule build_offshore_shapes:
         benchmarks("build_offshore_shapes")
     threads: 1
     resources:
-        mem_mb=1500,
+        mem_mb=6000,
     params:
         countries=config_provider("countries"),
     message:
@@ -198,7 +198,7 @@ rule build_nuts3_shapes:
         benchmarks("build_nuts3_shapes")
     threads: 1
     resources:
-        mem_mb=1500,
+        mem_mb=6000,
     params:
         countries=config_provider("countries"),
     message:
@@ -220,7 +220,7 @@ rule build_shapes:
         benchmarks("build_shapes")
     threads: 1
     resources:
-        mem_mb=1500,
+        mem_mb=6000,
     params:
         countries=config_provider("countries"),
     message:
@@ -441,7 +441,7 @@ rule build_co2_prices:
         benchmarks("build_co2_prices")
     threads: 1
     resources:
-        mem_mb=5000,
+        mem_mb=6000,
     params:
         rolling_window=config_provider("costs", "emission_prices", "rolling_window"),
     message:
@@ -461,7 +461,7 @@ rule build_fossil_fuel_prices:
         benchmarks("build_monthly_prices")
     threads: 1
     resources:
-        mem_mb=5000,
+        mem_mb=6000,
     params:
         rolling_window=config_provider("conventional", "fuel_price_rolling_window"),
     message:
@@ -506,7 +506,7 @@ rule build_hydro_profile:
     benchmark:
         benchmarks("build_hydro_profile")
     resources:
-        mem_mb=5000,
+        mem_mb=6000,
     params:
         hydro=config_provider("renewable", "hydro"),
         countries=config_provider("countries"),
@@ -641,7 +641,7 @@ rule build_electricity_demand_base:
     benchmark:
         benchmarks("build_electricity_demand_base_s")
     resources:
-        mem_mb=5000,
+        mem_mb=6000,
     params:
         distribution_key=config_provider("load", "distribution_key"),
         substation_only=config_provider("load", "substation_only"),
@@ -687,7 +687,7 @@ rule process_cost_data:
         benchmarks("build_cost_data_{planning_horizons}")
     threads: 1
     resources:
-        mem_mb=4000,
+        mem_mb=6000,
     params:
         costs=config_provider("costs"),
         max_hours=config_provider("electricity", "max_hours"),
@@ -902,7 +902,7 @@ rule prepare_network:
         benchmarks("prepare_network_base_s_{clusters}_elec_{opts}")
     threads: 1
     resources:
-        mem_mb=4000,
+        mem_mb=6000,
     params:
         time_resolution=config_provider("clustering", "temporal", "resolution_elec"),
         links=config_provider("links"),
@@ -961,7 +961,7 @@ rule clean_osm_data:
         benchmarks("clean_osm_data")
     threads: 1
     resources:
-        mem_mb=4000,
+        mem_mb=6000,
     params:
         voltages=config_provider("electricity", "voltages"),
     message:
@@ -999,7 +999,7 @@ rule build_osm_network:
         benchmarks("build_osm_network")
     threads: 1
     resources:
-        mem_mb=4000,
+        mem_mb=6000,
     params:
         countries=config_provider("countries"),
         voltages=config_provider("electricity", "voltages"),
@@ -1036,7 +1036,7 @@ rule build_tyndp_network:
         benchmarks("build_tyndp_network")
     threads: 1
     resources:
-        mem_mb=4000,
+        mem_mb=6000,
     params:
         countries=config_provider("countries"),
     message:
