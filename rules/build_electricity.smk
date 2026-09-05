@@ -240,7 +240,7 @@ if CUTOUT_DATASET["source"] in ["build"]:
             "benchmarks/build_cutout/{cutout}"
         threads: config["atlite"].get("nprocesses", 4)
         resources:
-            mem_mb=config["atlite"].get("nprocesses", 4) * 1000,
+            mem_mb=max(config["atlite"].get("nprocesses", 4) * 1000, 6000),
         params:
             cutouts=config_provider("atlite", "cutouts"),
         message:
@@ -312,7 +312,7 @@ rule determine_availability_matrix_MD_UA:
         benchmarks("determine_availability_matrix_MD_UA_{clusters}_{technology}")
     threads: config["atlite"].get("nprocesses", 4)
     resources:
-        mem_mb=config["atlite"].get("nprocesses", 4) * 5000,
+        mem_mb=max(config["atlite"].get("nprocesses", 4) * 5000, 6000),
     params:
         renewable=config_provider("renewable"),
         plot_availability_matrix=config_provider("atlite", "plot_availability_matrix"),
@@ -385,7 +385,7 @@ rule determine_availability_matrix:
         benchmarks("determine_availability_matrix_{clusters}_{technology}")
     threads: config["atlite"].get("nprocesses", 4)
     resources:
-        mem_mb=config["atlite"].get("nprocesses", 4) * 5000,
+        mem_mb=max(config["atlite"].get("nprocesses", 4) * 5000, 6000),
     params:
         renewable=config_provider("renewable"),
         plot_availability_matrix=config_provider("atlite", "plot_availability_matrix"),
@@ -419,7 +419,7 @@ rule build_renewable_profiles:
         technology="(?!hydro).*",  # Any technology other than hydro
     threads: config["atlite"].get("nprocesses", 4)
     resources:
-        mem_mb=config["atlite"].get("nprocesses", 4) * 5000,
+        mem_mb=max(config["atlite"].get("nprocesses", 4) * 5000, 6000),
     params:
         snapshots=config_provider("snapshots"),
         drop_leap_day=config_provider("enable", "drop_leap_day"),
@@ -532,7 +532,7 @@ rule build_line_rating:
         benchmarks("build_line_rating")
     threads: config["atlite"].get("nprocesses", 4)
     resources:
-        mem_mb=config["atlite"].get("nprocesses", 4) * 1000,
+        mem_mb=max(config["atlite"].get("nprocesses", 4) * 1000, 6000),
     params:
         snapshots=config_provider("snapshots"),
         drop_leap_day=config_provider("enable", "drop_leap_day"),
