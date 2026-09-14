@@ -110,6 +110,17 @@ anything non-trivial.
 
 ## Fork-specific changes vs. upstream
 
+- **`rules/aro.smk` + `scripts/prepare_aro_network.py` + `scripts/lib/validation/config/aro.py`**
+  add an `aro.heat` config section and a `prepare_aro_network` rule that layers an exogenous
+  electrified-heat load onto an electricity-only network, as separate `Load` components on the
+  existing AC buses (no heat buses, no links, no storage). This is what PyPSARO's `run.network`
+  points at, keeping the content assumptions here rather than in PyPSARO. Deliberately additive —
+  new files only, plus a one-line `include:` in `Snakefile` and one field in
+  `config/lib/validation/config/_schema.py` — so a future reset onto a newer upstream tag
+  re-applies it without conflicts. The demand construction is *imported* from
+  `prepare_sector_network` (`build_heat_demand`) and `definitions/heat_system` (`HeatSystem`)
+  rather than duplicated; only `add_heat`'s bus/link creation is replaced. See the parent repo's
+  `memory/heat-electrification-design.md` for the modelling rationale.
 - **`scripts/_helpers.py`'s `get_scenarios()`** resolves `run.scenarios.file` against
   PyPSARO's root (found by walking up from `workflow.basedir` looking for `.gitmodules`)
   instead of the process's CWD, and `Snakefile` passes `workflow.basedir` into it. This is
