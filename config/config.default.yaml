@@ -1483,6 +1483,18 @@ data:
     source: archive
     version: latest
 
+aro:
+  heat:
+    enable: false
+    shares: {}
+    default_shares:
+      heat_pump: 0.9
+      resistive: 0.05
+    heat_pump_sources:
+      rural: ground
+      urban decentral: air
+      urban central: air
+
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#overpass_api
 overpass_api:
   url: "https://overpass-api.de/api/interpreter"

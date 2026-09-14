@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from scripts.lib.validation.config._base import ConfigModel
 from scripts.lib.validation.config.adjustments import AdjustmentsConfig
+from scripts.lib.validation.config.aro import AroConfig
 from scripts.lib.validation.config.atlite import AtliteConfig
 from scripts.lib.validation.config.biomass import BiomassConfig
 from scripts.lib.validation.config.clustering import ClusteringConfig
@@ -231,6 +232,10 @@ class ConfigSchema(BaseModel):
     data: DataConfig = Field(
         default_factory=DataConfig,
         description="Data source configuration.",
+    )
+    aro: AroConfig = Field(
+        default_factory=AroConfig,
+        description="Fork-specific ARO settings consumed by `prepare_aro_network`; not part of upstream PyPSA-Eur.",
     )
     overpass_api: OverpassApiConfig = Field(
         default_factory=OverpassApiConfig,
