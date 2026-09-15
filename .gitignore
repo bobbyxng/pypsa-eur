@@ -99,3 +99,6 @@ doc/img/intro-workflow.svg
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+
+# apptainer/singularity images (built locally, ~1 GB each)
+*.sif
