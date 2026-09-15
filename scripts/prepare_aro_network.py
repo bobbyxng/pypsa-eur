@@ -17,8 +17,12 @@ deliberate, documented limitation -- see the parent repo's `memory/aro-study-lim
 The demand construction is *imported* from `prepare_sector_network` rather than reimplemented:
 `build_heat_demand` handles the sector/use decomposition, the final-energy-to-useful-heat
 efficiency conversion, and the subtraction of today's already-electrified heat from the metered
-load. Only `add_heat`'s bus/link creation is replaced, by dividing each heat system's demand by
-that system's own COP.
+load. Only `add_heat`'s bus/link creation is replaced, by multiplying each heat system's demand
+by that system's own 1/COP.
+
+Heat demand and 1/COP are each aggregated onto the network's snapshots *before* being combined,
+which reproduces `add_heat` exactly rather than approximately -- see
+`memory: aro-heat-cop-aggregation-order` for why upstream's order is the one to match.
 """
 
 import logging
@@ -27,9 +31,9 @@ import pandas as pd
 import pypsa
 import xarray as xr
 
-from scripts._helpers import configure_logging, set_scenario_config
+from scripts._helpers import configure_logging, get, set_scenario_config
 from scripts.definitions.heat_system import HeatSystem
-from scripts.prepare_sector_network import build_heat_demand, get
+from scripts.prepare_sector_network import build_heat_demand
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +77,8 @@ def to_network_resolution(df: pd.DataFrame, snapshots: pd.Index) -> pd.DataFrame
     Aggregate an hourly frame onto the network's (typically coarser) snapshots.
 
     By **mean**, not by sampling: the electricity load these join was itself averaged when
-    pypsa-eur applied `clustering.temporal.resolution_elec`, and point-sampling a 3-hourly
-    network from an hourly profile would overstate the peak.
+    pypsa-eur applied `clustering.temporal.averaging`, and point-sampling a 3-hourly network
+    from an hourly profile would overstate the peak.
     """
     freq = pd.infer_freq(snapshots)
     if freq is None:
@@ -112,6 +116,17 @@ def add_heat_load(
         logger.info(f"Assumed space heat reduction of {dE:.2%}")
         for sector in {hs.sector.value for hs in HeatSystem if hs.sector is not None}:
             heat_demand[f"{sector} space"] = (1 - dE) * heat_demand[f"{sector} space"]
+    # Aggregate onto the network's snapshots HERE -- before heat is ever combined with COP.
+    # That ordering is the whole point: pypsa-eur cannot divide hourly, because how much heat
+    # its heat-pump Link serves in each hour is a decision variable. It can only carry 1/COP as
+    # a Link `efficiency` parameter, aggregate that, and let the solver multiply. So it computes
+    # mean(heat) * mean(1/COP) and we match it exactly, rather than the mean(heat / COP) this
+    # script could compute from its exogenous shares. The two differ by the within-window
+    # covariance of heat demand and 1/COP -- small (0.02% on totals at 24h averaging) but not
+    # zero, and matching upstream is worth more here than the marginal accuracy.
+    # memory: aro-heat-cop-aggregation-order
+    heat_demand = to_network_resolution(heat_demand, n.snapshots)
+
     dh_loss = sector_params["district_heating"]["district_heating_loss"]
 
     district_heat_info = pd.read_csv(district_heat_share_file, index_col=0)
@@ -192,6 +207,14 @@ def add_heat_load(
                 "these as zero would silently drop this system's heat-pump load entirely."
             )
 
+        # Invert first, then aggregate: 1/COP is the quantity pypsa-eur stores on the Link
+        # (its `efficiency`, per the reversed bus wiring in
+        # memory: pypsa-eur-sector-run-gotchas) and therefore the quantity its time aggregation
+        # averages. Aggregating COP and inverting afterwards would give the arithmetic mean
+        # where upstream has the harmonic mean -- 2.2086 vs 2.2070 on the config this was
+        # measured against.
+        inv_cop = to_network_resolution(1.0 / curve, n.snapshots)
+
         # `ct` is itself just `pop.index.str[:2]` (build_clustered_population_layouts), so this
         # is not a more correct derivation than slicing here -- it routes through the interface
         # five other upstream scripts already use, so a future change to how country is derived
@@ -201,7 +224,7 @@ def add_heat_load(
         hp_share = countries.map(lambda ct: resolve_shares(ct, params)[0])
         res_share = countries.map(lambda ct: resolve_shares(ct, params)[1])
 
-        hp = demand.multiply(hp_share, axis=1).div(curve.loc[demand.index])
+        hp = demand.multiply(hp_share, axis=1).mul(inv_cop[demand.columns])
         heat_pump_load[group] = heat_pump_load.get(group, 0.0) + hp
 
         # Read from the cost table, keyed exactly as `add_heat` does. Resistive carries no
@@ -226,7 +249,9 @@ def add_heat_load(
 
 def _add_loads(n: pypsa.Network, load: pd.DataFrame, carrier: str, suffix: str) -> None:
     """Add one Load per node on its existing AC bus, dropping all-zero nodes."""
-    load = to_network_resolution(load, n.snapshots).fillna(0.0)
+    # Already on the network's snapshots: add_heat_load aggregates heat demand and 1/COP
+    # separately, before combining them, to match pypsa-eur's own aggregation order.
+    load = load.reindex(n.snapshots).fillna(0.0)
     load = load.loc[:, load.abs().sum() > 0]
     if load.empty:
         logger.info(f"No {carrier} load to add.")
@@ -258,9 +283,7 @@ if __name__ == "__main__":
 
         snakemake = mock_snakemake(
             "prepare_aro_network",
-            clusters=20,
-            opts="",
-            planning_horizons="2050",
+            horizon="2050",
         )
     configure_logging(snakemake)
     set_scenario_config(snakemake)
@@ -284,8 +307,18 @@ if __name__ == "__main__":
             )
             n.loads.loc[unnamed, "carrier"] = ELECTRICITY_CARRIER
 
-        pop_weighted_energy_totals = pd.read_csv(
-            snakemake.input.pop_weighted_energy_totals, index_col=0
+        # Scale the *annual* totals down to the modelled period before they reach
+        # build_heat_demand, exactly as prepare_sector_network.main() does. build_heat_demand
+        # normalises by the profile's own sum (`shape / shape.sum()`), so it spreads whatever
+        # total it is handed across the modelled snapshots regardless of how long they are.
+        # Omitting this put a full year of heat into a one-week run -- 52x too much, which
+        # drove every metered electricity load negative via the subtraction below. Only
+        # invisible on a full-year run, where nyears == 1.
+        # memory: aro-heat-nyears-scaling
+        nyears = n.snapshot_weightings.objective.sum() / 8760.0
+        pop_weighted_energy_totals = (
+            pd.read_csv(snakemake.input.pop_weighted_energy_totals, index_col=0)
+            * nyears
         )
         # `prepare_sector_network` overwrites the space-heating columns with heat-specific
         # totals before calling build_heat_demand. Skipping this does not just rescale demand,
@@ -293,7 +326,7 @@ if __name__ == "__main__":
         # reproduces add_heat's heat loads exactly (ratio 1.0000 per node); without it the
         # per-node ratio scatters between 0.42 and 1.17.
         pop_weighted_energy_totals.update(
-            pd.read_csv(snakemake.input.pop_weighted_heat_totals, index_col=0)
+            pd.read_csv(snakemake.input.pop_weighted_heat_totals, index_col=0) * nyears
         )
         year = int(snakemake.params.energy_totals_year)
         heating_efficiencies = pd.read_csv(
@@ -329,7 +362,7 @@ if __name__ == "__main__":
             costs,
             params,
             snakemake.params.sector,
-            int(snakemake.wildcards.planning_horizons),
+            int(snakemake.wildcards.horizon),
         )
 
         n.export_to_netcdf(snakemake.output.network)

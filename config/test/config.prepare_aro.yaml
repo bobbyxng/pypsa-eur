@@ -3,10 +3,19 @@
 #
 # SPDX-License-Identifier: CC0-1.0
 
-# Mirrors config.overnight.yaml so the sector pathway still runs and `add_heat` produces
-# the heat loads that test_prepare_aro_network.py checks `prepare_aro_network` against.
-# Deliberately a separate file rather than an edit to config.overnight.yaml, which is an
-# upstream file: new files re-apply cleanly when this branch is reset onto a newer tag.
+# The electricity-only half of the `prepare_aro_network` regression test: this is the shape
+# PyPSARO actually consumes -- no heat buses, heat arriving as plain AC loads.
+# config.prepare_aro_sector.yaml is its sector-coupled twin and supplies the ground truth;
+# the two files must stay identical apart from `sector.enabled`, `run.name` and the `aro`
+# block, or test_prepare_aro_network.py is comparing two different networks.
+#
+# Before upstream's streamlined workflow (#1838) one run produced both an electricity-only
+# `base_s_5_elec_.nc` and a sector-coupled `base_s_5___2030.nc`. There is now a single
+# `composed_{horizon}.nc` per run whose content depends on `sector.enabled`, so the
+# comparison needs two runs.
+#
+# Deliberately separate files rather than an edit to config.overnight.yaml, which is an
+# upstream file: new files re-apply cleanly when this branch is merged onto a newer tag.
 tutorial: true
 
 run:
@@ -15,14 +24,8 @@ run:
   shared_resources:
     policy: false
 
-
-scenario:
-  clusters:
-  - 5
-  sector_opts:
-  - ''
-  planning_horizons:
-  - 2030
+foresight: overnight
+planning_horizons: 2030
 
 countries: ['BE']
 
@@ -60,9 +63,15 @@ renewable:
 
 clustering:
   temporal:
-    resolution_sector: 24h
+    averaging: 24h
+  cluster_network:
+    n_clusters: 5
 
 sector:
+  # Off: prepare_aro_network's whole point is to serve heat without the sector layer. The
+  # heat *resources* it reads (cop_profiles, district_heat_share, ...) are still built --
+  # those rules are not gated on sector.enabled and the rule requests them explicitly.
+  enabled: false
   gas_network: true
   H2_retrofit: true
   residential_heat:
@@ -119,7 +128,7 @@ solving:
   solver:
     name: highs
     options: highs-default
-  mem: 4000
+  mem_mb: 4000
 
   check_objective:
     enable: false
@@ -131,11 +140,11 @@ plotting:
   eu_node_location:
     x: -5.5
     y: 46.
-  costs_max: 1000
-  costs_threshold: 0.0000001
-  energy_max:
-  energy_min:
-  energy_threshold: 0.000001
+  costs_max: auto
+  costs_threshold: 0.001
+  energy_max: auto
+  energy_min: auto
+  energy_threshold: 0.00001
   interactive_bus_balance:
     bus_name_pattern: "*central heat*"
   enable_heat_source_maps: true
