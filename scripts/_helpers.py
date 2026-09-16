@@ -167,6 +167,12 @@ def get_scenarios(run, basedir=None):
         if not fn.is_absolute() and basedir is not None:
             fn = _find_pypsaro_root(Path(basedir)) / fn
         if fn.exists():
+            # Write the resolved path back into the config. `set_scenario_config` reopens this
+            # file inside every job, and a `run:` directive executes from Snakemake's source
+            # cache, where neither the CWD nor `__file__` can reach PyPSARO's root -- so this
+            # parse-time call is the only place that reliably sees the real tree. Without it,
+            # scenario runs die in `build_ptes_operations` and friends.
+            scenario_config["file"] = str(fn)
             scenarios = yaml.safe_load(fn.read_text())
             if run["name"] == "all":
                 run["name"] = list(scenarios.keys())
@@ -360,9 +366,15 @@ def set_scenario_config(snakemake):
             with open(scenario["file"]) as f:
                 scenario_config = yaml.safe_load(f)
         except FileNotFoundError:
-            # fallback for mock_snakemake
+            # `get_scenarios` normally rewrites `run.scenarios.file` to an absolute path at
+            # parse time, so the open above succeeds. This is the fallback for callers that
+            # bypass that path (mock_snakemake, standalone pypsa-eur): try PyPSARO's root
+            # before upstream's this-repo-root guess, since the file is written relative to it.
             script_dir = Path(__file__).parent.resolve()
-            root_dir = script_dir.parent
+            try:
+                root_dir = _find_pypsaro_root(script_dir)
+            except RuntimeError:
+                root_dir = script_dir.parent  # standalone pypsa-eur / mock_snakemake
             with open(root_dir / scenario["file"]) as f:
                 scenario_config = yaml.safe_load(f)
         update_config(snakemake.config, scenario_config[snakemake.wildcards.run])
