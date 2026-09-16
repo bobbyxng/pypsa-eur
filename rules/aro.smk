@@ -13,6 +13,51 @@
 # prepare_network chain into one rule), so `aro` is a post-compose, pre-solve layer.
 
 
+# The manifest, not `directory("data/fallahnejad")`, is the declared output: Snakemake
+# wipes a directory output before re-running, which would discard 382 MB on every retry
+# and defeat the script's own skip-what-exists resume.
+rule retrieve_fallahnejad_dh:
+    output:
+        manifest="data/fallahnejad/manifest.json",
+    log:
+        "logs/retrieve_fallahnejad_dh.log",
+    retries: 2
+    threads: 1
+    resources:
+        mem_mb=6000,
+    message:
+        "Retrieving Fallahnejad et al. (2024) district-heating potential data"
+    script:
+        scripts("retrieve_fallahnejad_dh.py")
+
+
+# Not part of any default target, and its output is copied into the config by hand rather
+# than read by a rule: the config stays a static, reviewable artifact and no ordinary run
+# depends on the 400 MB retrieval above.
+rule calibrate_district_heating_potential:
+    input:
+        fallahnejad="data/fallahnejad/manifest.json",
+        pop_layout=resources("pop_layout.csv"),
+        pop_weighted_energy_totals=resources("pop_weighted_energy_totals.csv"),
+        pop_weighted_heat_totals=resources("pop_weighted_heat_totals.csv"),
+        heating_efficiencies=resources("heating_efficiencies.csv"),
+        district_heat_share=resources("district_heat_share.csv"),
+    output:
+        potential=resources("dh_potential_calibrated_{horizon}.json"),
+    log:
+        logs("calibrate_district_heating_potential_{horizon}.log"),
+    threads: 1
+    resources:
+        mem_mb=6000,
+    params:
+        energy_totals_year=config_provider("energy", "energy_totals_year"),
+        sector=config_provider("sector"),
+    message:
+        "Calibrating district-heating potential to Fallahnejad et al. (2024) for {wildcards.horizon}"
+    script:
+        scripts("calibrate_district_heating_potential.py")
+
+
 rule prepare_aro_network:
     input:
         network=resources("networks/composed_{horizon}.nc"),
@@ -37,6 +82,12 @@ rule prepare_aro_network:
         aro_heat=config_provider("aro", "heat"),
         energy_totals_year=config_provider("energy", "energy_totals_year"),
         sector=config_provider("sector"),
+        # The input network is already temporally aggregated (compose_network folds that in),
+        # so the hourly heat inputs must be collapsed with the SAME operator upstream used --
+        # mean for averaging/segmentation, point-sample for representative. Inferring it from
+        # the snapshot index instead silently broke on drop_leap_day years.
+        # memory: aro-heat-temporal-alignment
+        clustering_temporal=config_provider("clustering", "temporal"),
     message:
         "Adding exogenous electrified-heat load to composed network for {wildcards.horizon}"
     script:
