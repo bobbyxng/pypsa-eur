@@ -26,21 +26,31 @@ which reproduces `add_heat` exactly rather than approximately -- see
 """
 
 import logging
+from itertools import product
 
 import pandas as pd
 import pypsa
 import xarray as xr
 
-from scripts._helpers import configure_logging, get, set_scenario_config
+from scripts._helpers import (
+    configure_logging,
+    get,
+    get_temporal_resolution,
+    set_scenario_config,
+)
+from scripts.definitions.heat_sector import HeatSector
 from scripts.definitions.heat_system import HeatSystem
 from scripts.prepare_sector_network import build_heat_demand
 
 logger = logging.getLogger(__name__)
 
-# Existing electricity-only networks leave `Load.carrier` as the empty string, whereas
-# `build_heat_demand` locates the loads to correct via `carrier == "electricity"`. Left as-is it
-# would subtract from nothing, silently. Naming them also makes the six heat loads below
-# distinguishable per node (memory: pypsa-eur-sector-run-gotchas).
+# `build_heat_demand` locates the loads to correct via `carrier == "electricity"`. Upstream's
+# `add_electricity` sets that carrier itself since the streamlined workflow (#1838), so the
+# naming pass in `__main__` is a no-op on any network built by the current rules and its log
+# line will not fire -- do NOT read that silence as "the subtraction found nothing". The pass
+# is kept because pre-#1838 networks left `Load.carrier` empty, where it was load-bearing:
+# without it the subtraction matched no loads and silently did nothing. Naming also keeps the
+# six heat loads below distinguishable per node (memory: pypsa-eur-sector-run-gotchas).
 ELECTRICITY_CARRIER = "electricity"
 
 HEAT_PUMP_CARRIER = "{heat_system} heat pump electricity"
@@ -72,22 +82,70 @@ def resolve_shares(country: str, params: dict) -> tuple[float, float]:
     return float(shares["heat_pump"]), float(shares["resistive"])
 
 
-def to_network_resolution(df: pd.DataFrame, snapshots: pd.Index) -> pd.DataFrame:
+def to_network_resolution(
+    df: pd.DataFrame, snapshots: pd.Index, temporal: dict
+) -> pd.DataFrame:
     """
     Aggregate an hourly frame onto the network's (typically coarser) snapshots.
 
-    By **mean**, not by sampling: the electricity load these join was itself averaged when
-    pypsa-eur applied `clustering.temporal.averaging`, and point-sampling a 3-hourly network
-    from an hourly profile would overstate the peak.
+    Mirrors `set_temporal_aggregation`'s own operator rather than guessing one, because which
+    operator is correct depends on the configured method:
+
+    - `averaging` and `segmentation` group every fine timestamp onto the closest previous
+      snapshot and take the **mean**. Grouping rather than `resample(freq)` is what makes this
+      right for segmentation's variable-length segments, and for a `drop_leap_day` index whose
+      Feb 29 gap has no single frequency to infer.
+    - `representative` keeps `n.snapshots[::value]`, i.e. it point-samples. Averaging there
+      would NOT match upstream: the coarse value genuinely is the fine value at that hour.
+
+    This used to call `pd.infer_freq` and fall back to an unaveraged reindex when that returned
+    None -- which is exactly what a leap year with `enable.drop_leap_day` produces. The fallback
+    silently point-sampled the added heat load: only -0.2% on annual energy at 3h, but +5.2% on
+    the 3-hourly PEAK, which is the quantity this study turns on. Reading the method from config
+    removes the inference entirely. memory: aro-heat-temporal-alignment
     """
-    freq = pd.infer_freq(snapshots)
-    if freq is None:
-        logger.warning(
-            "Could not infer a frequency from the network snapshots; falling back to "
-            "reindexing the heat profile without averaging."
-        )
+    resolution = get_temporal_resolution(temporal)
+    if resolution is not None and resolution[0] == "representative":
         return df.reindex(snapshots)
-    return df.resample(freq).mean().reindex(snapshots)
+
+    # `method="ffill"` yields, for each fine timestamp, the position of the closest snapshot at
+    # or before it -- the same mapping `set_temporal_aggregation` builds via `get_indexer` plus
+    # `ffill`. -1 marks fine timestamps preceding the first snapshot, which belong to no window.
+    positions = snapshots.get_indexer(df.index, method="ffill")
+    inside = positions >= 0
+    grouped = df[inside].groupby(snapshots[positions[inside]]).mean()
+    return grouped.reindex(snapshots)
+
+
+def electric_heat_supply(
+    hourly_heat_demand_file: str, pop_weighted_energy_totals: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Today's already-electrified heat, hourly, per (sector, use) and node.
+
+    Deliberately re-derives what `build_heat_demand` computes internally, because that function
+    subtracts it from `n.loads_t.p_set` **in place** and never returns it.
+
+    Upstream can subtract hourly: `add_heat` runs before `set_temporal_aggregation`, so its
+    `p_set` is still hourly and the two indices line up. Here the network arrives already
+    aggregated (`compose_network` folds the aggregation in), so an hourly subtraction misaligns
+    -- pandas widens to the union index and the write-back silently keeps only each window's
+    first hour. Because the mean is linear, upstream's answer is just
+    `p_coarse - mean_window(supply)`, which is what `__main__` applies instead.
+
+    Re-deriving these three lines is the price of not reaching into upstream's local scope; if
+    upstream changes how `electric_heat_supply` is built this diverges silently, which is what
+    `test_metered_load_matches_add_heat` exists to catch.
+    memory: aro-heat-temporal-alignment
+    """
+    shape = xr.open_dataset(hourly_heat_demand_file).to_dataframe().unstack(level=1)
+    supply = {}
+    for sector, use in product([s.value for s in HeatSector], ["water", "space"]):
+        name = f"{sector} {use}"
+        supply[name] = (shape[name] / shape[name].sum()).multiply(
+            pop_weighted_energy_totals[f"electricity {sector} {use}"]
+        ) * 1e6
+    return pd.concat(supply, axis=1)
 
 
 def add_heat_load(
@@ -99,6 +157,7 @@ def add_heat_load(
     costs: pd.DataFrame,
     params: dict,
     sector_params: dict,
+    temporal: dict,
     investment_year: int,
 ) -> None:
     """Convert heat demand into electricity loads on the AC buses, per heat system."""
@@ -125,7 +184,7 @@ def add_heat_load(
     # covariance of heat demand and 1/COP -- small (0.02% on totals at 24h averaging) but not
     # zero, and matching upstream is worth more here than the marginal accuracy.
     # memory: aro-heat-cop-aggregation-order
-    heat_demand = to_network_resolution(heat_demand, n.snapshots)
+    heat_demand = to_network_resolution(heat_demand, n.snapshots, temporal)
 
     dh_loss = sector_params["district_heating"]["district_heating_loss"]
 
@@ -213,7 +272,7 @@ def add_heat_load(
         # averages. Aggregating COP and inverting afterwards would give the arithmetic mean
         # where upstream has the harmonic mean -- 2.2086 vs 2.2070 on the config this was
         # measured against.
-        inv_cop = to_network_resolution(1.0 / curve, n.snapshots)
+        inv_cop = to_network_resolution(1.0 / curve, n.snapshots, temporal)
 
         # `ct` is itself just `pop.index.str[:2]` (build_clustered_population_layouts), so this
         # is not a more correct derivation than slicing here -- it routes through the interface
@@ -289,7 +348,23 @@ if __name__ == "__main__":
     set_scenario_config(snakemake)
 
     params = snakemake.params.aro_heat
+    temporal = snakemake.params.clustering_temporal
     n = pypsa.Network(snakemake.input.network)
+
+    # Since #1838 one `composed_{horizon}.nc` covers both network kinds and only
+    # `sector.enabled` distinguishes them, so pointing this rule at a sector-coupled network is
+    # a plausible mistake with no natural signal: `add_heat` would already have subtracted the
+    # baseline and built heat buses, and this script would subtract it a second time and add a
+    # second, exogenous copy of the same demand on the AC buses. Check the network rather than
+    # the config, so a network built under a different config is caught too.
+    heat_buses = n.buses.index[n.buses.carrier.str.contains("heat", na=False)]
+    if len(heat_buses):
+        raise ValueError(
+            f"{snakemake.input.network} already carries {len(heat_buses)} heat buses, so it was "
+            "composed with sector.enabled: true. prepare_aro_network layers heat onto an "
+            "ELECTRICITY-ONLY network; running it here would double-count heat demand silently. "
+            "Point this rule at a run composed with sector.enabled: false."
+        )
 
     if not params["enable"]:
         logger.info(
@@ -336,21 +411,43 @@ if __name__ == "__main__":
         # processed costs are wide: technology index, parameter columns.
         costs = pd.read_csv(snakemake.input.costs, index_col=0)
 
-        before = n.loads_t.p_set.sum().sum()
-        # Subtracts today's already-electrified heat from the metered load in place. This is
-        # unconditional by design: skipping it double-counts, so it is logged rather than
-        # exposed as a toggle whose "off" position is simply wrong.
+        electric_nodes = n.loads.index[n.loads.carrier == ELECTRICITY_CARRIER]
+        metered = n.loads_t.p_set[electric_nodes].copy()
+
+        # Called for its return value only. It ALSO subtracts today's already-electrified heat
+        # from `n.loads_t.p_set` in place, but at hourly resolution against an index this
+        # network no longer has, so that write is discarded and redone below. See
+        # `electric_heat_supply` for why it cannot simply be reused in place.
         heat_demand = build_heat_demand(
             n,
             snakemake.input.hourly_heat_demand_total,
             pop_weighted_energy_totals,
             heating_efficiencies,
         )
-        after = n.loads_t.p_set.sum().sum()
+
+        # Subtracting today's electric heat is unconditional by design: skipping it
+        # double-counts, so it is logged rather than exposed as a toggle whose "off" position is
+        # simply wrong. What IS conditional is the window operator, which must match whatever
+        # `set_temporal_aggregation` used -- see `to_network_resolution`.
+        baseline = to_network_resolution(
+            electric_heat_supply(
+                snakemake.input.hourly_heat_demand_total, pop_weighted_energy_totals
+            )
+            .T.groupby(level=1)
+            .sum()
+            .T,
+            n.snapshots,
+            temporal,
+        )
+        # Assigning `metered - baseline` in one step both discards build_heat_demand's
+        # misaligned write and applies the correct one.
+        n.loads_t.p_set[electric_nodes] = metered - baseline[electric_nodes]
+
         weight = n.snapshot_weightings.objective.iloc[0]
+        subtracted = baseline[electric_nodes].sum().sum() * weight
         logger.info(
             f"Subtracted existing electric heating from the metered load: "
-            f"{(before - after) * weight / 1e6:.1f} TWh/a."
+            f"{subtracted / 1e6:.1f} TWh/a."
         )
 
         add_heat_load(
@@ -362,6 +459,7 @@ if __name__ == "__main__":
             costs,
             params,
             snakemake.params.sector,
+            temporal,
             int(snakemake.wildcards.horizon),
         )
 
