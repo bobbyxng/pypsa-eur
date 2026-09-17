@@ -3,11 +3,19 @@
 # SPDX-License-Identifier: MIT
 
 """
-Layer an exogenous electrified-heat load onto an electricity-only network.
+Prepare an electricity-only network for the ARO/C&CG workflow.
 
-Fork-specific; not part of upstream PyPSA-Eur. Produces the network that PyPSARO's ARO/C&CG
-resilience workflow consumes, so that PyPSARO itself carries no content assumptions -- it only
-points `run.network` at this rule's output.
+Two independent layers, both fork-specific and neither part of upstream PyPSA-Eur:
+
+1. an exogenous electrified-heat load, added as Loads on the existing AC buses
+   (`aro.heat.enable`, described below);
+2. the H2 cavern-vs-tank split that `attach_stores` omits on the electricity path
+   (`cap_hydrogen_storage`, gated on `sector.hydrogen_underground_storage`).
+
+(2) runs unconditionally so the no-heat baseline and the heat run differ in exactly one thing.
+
+Produces the network that PyPSARO's ARO/C&CG resilience workflow consumes, so that PyPSARO
+itself carries no content assumptions -- it only points `run.network` at this rule's output.
 
 Heat is added as *loads on the existing AC buses*, not as a modelled heat sector: no heat buses,
 no heat-pump Links, no thermal storage. That keeps the outage-disconnection paths and design
@@ -63,6 +71,16 @@ CARRIER_COLORS = {
     "urban decentral resistive heater electricity": "#fc8d59",
     "urban central resistive heater electricity": "#d7301f",
 }
+
+# Carrier that `add_electricity.attach_stores` gives the H2 store, bus and links. Upstream's
+# sector path uses `H2 Store`; the electricity path reuses the bus carrier verbatim.
+H2_CARRIER = "H2"
+CAVERN_TECH = "hydrogen storage underground"
+TANK_TECH = "hydrogen storage tank type 1 including compressor"
+# Both thresholds are upstream's, from `prepare_sector_network.add_storage_and_grids`: sites
+# below 2 TWh are dropped as too small to develop, and no single site may exceed 1000 TWh.
+CAVERN_MIN_POTENTIAL_TWH = 2.0
+CAVERN_MAX_PER_SITE_MWH = 1e9
 
 
 def cop_heat_system(heat_system: HeatSystem) -> str:
@@ -336,6 +354,115 @@ def _add_loads(n: pypsa.Network, load: pd.DataFrame, carrier: str, suffix: str) 
     )
 
 
+def cap_hydrogen_storage(
+    n: pypsa.Network,
+    h2_cavern_file: str,
+    costs: pd.DataFrame,
+    options: dict,
+) -> None:
+    """
+    Re-cost the H2 stores as geologically capped caverns or uncapped tanks.
+
+    `add_electricity.attach_stores` gives carrier `H2` the *underground* cost
+    (`hydrogen storage underground`) with no `e_nom_max`, at every node. The geological limit
+    pypsa-eur does implement (`build_salt_cavern_potentials`) is wired only into
+    `prepare_sector_network`, so an electricity-only run gets unlimited salt caverns in
+    Bavaria at 1/25th the tank cost.
+
+    Why this is not cosmetic: the store is `e_cyclic`, so a net-zero system builds TWh-scale
+    *seasonal* caverns wherever it likes, which makes the NOMINAL system cheaper and more
+    resilient and so moves the baseline the resilience premium is measured against -- in both
+    numerator and denominator. `dump/todos.md` sec -3 has the full argument; it also notes the
+    cap barely moves the outage response itself, where the converter (~206k EUR/MW/a to
+    discharge) dominates the store (~16k EUR/MWh/a).
+
+    The >2 TWh floor, the TWh->MWh conversion and the 1000 TWh per-site clip reproduce
+    `prepare_sector_network.add_storage_and_grids` rather than importing it: that logic is
+    inline in a ~600-line function taking 20+ arguments, not a helper, and this fork keeps its
+    changes additive so they re-apply across upstream merges (see AGENTS.md). Everything else
+    IS reused -- the rule, the dataset, and the two `sector.hydrogen_underground_storage*`
+    config keys, which `validate_config` accepts with `sector.enabled: false`.
+
+    Setting `sector.hydrogen_underground_storage: false` puts every node on tanks, which is
+    the H2-vs-H2-tank sensitivity `dump/todos.md` sec -3 leaves open -- a deliberate scenario,
+    not a broken network, which is why this is gated on an existing meaningful flag rather
+    than on a new enable/disable toggle whose "off" position would be knowingly wrong.
+
+    Matched deliberately to upstream: a cavern node gets NO tank alternative, so it is hard
+    capped at its own potential. Harmless at DE-8, where the smallest retained potential
+    (116 TWh) is ~90x that node's annual electricity demand, but it would bind on a network
+    clustered finely enough to isolate a small-potential site.
+
+    Verified against upstream on de-heat-8 with the default options: identical cavern/tank
+    node sets and identical `e_nom_max` to the last decimal.
+
+    ONE DELIBERATE DIVERGENCE, in the `hydrogen_underground_storage: false` branch. Upstream
+    rebinds `h2_caverns` to the filtered Series only *inside* its `if`, then computes
+    `nodes_overground = h2_caverns.index.symmetric_difference(nodes)` outside it -- so with the
+    flag off, `h2_caverns` is still the raw DataFrame and its index is the CSV's node list.
+    The symmetric difference then yields only the nodes ABSENT from the CSV, and every node
+    the CSV does list gets no H2 store at all: 7 of 8 on de-heat-8, silently. Here every node
+    gets a tank instead, which is what the flag is meant to express. `symmetric_difference`
+    also puts a store on a non-existent bus if the CSV names a node the network lacks; keying
+    off the network's own stores rather than the CSV's index makes that unreachable.
+    Locked in by `test_cavern_split_disabled_gives_all_tanks` -- do not "restore parity" here.
+    """
+    stores = n.stores.index[n.stores.carrier == H2_CARRIER]
+    if stores.empty:
+        logger.info(
+            f"No '{H2_CARRIER}' stores in the network -- nothing to re-cost. This is expected "
+            "only if electricity.extendable_carriers.Store omits H2."
+        )
+        return
+
+    # Store -> AC node via the H2 bus's `location`, which `attach_stores` sets. Going through
+    # `location` rather than stripping a " H2" suffix keeps this independent of how
+    # `attach_stores` happens to name buses and stores.
+    node = n.stores.loc[stores, "bus"].map(n.buses["location"])
+
+    caverns = pd.read_csv(h2_cavern_file, index_col=0)
+    cavern_types = [
+        c
+        for c in options["hydrogen_underground_storage_locations"]
+        if c in caverns.columns
+    ]
+    if options["hydrogen_underground_storage"] and not caverns.empty and cavern_types:
+        potential = caverns[cavern_types].sum(axis=1)
+        potential = potential[potential > CAVERN_MIN_POTENTIAL_TWH] * 1e6  # TWh -> MWh
+        potential = potential.clip(upper=CAVERN_MAX_PER_SITE_MWH)
+    else:
+        potential = pd.Series(dtype=float)
+        logger.info(
+            "Hydrogen underground storage disabled or unavailable "
+            f"(hydrogen_underground_storage={options['hydrogen_underground_storage']}, "
+            f"matched cavern types={cavern_types}) -- every node gets tank storage."
+        )
+
+    is_cavern = node.isin(potential.index)
+    for mask, tech, cap in (
+        (is_cavern, CAVERN_TECH, node[is_cavern].map(potential)),
+        (~is_cavern, TANK_TECH, None),
+    ):
+        names = stores[mask.to_numpy()]
+        if names.empty:
+            continue
+        n.stores.loc[names, "capital_cost"] = costs.at[tech, "capital_cost"]
+        n.stores.loc[names, "lifetime"] = costs.at[tech, "lifetime"]
+        n.stores.loc[names, "e_nom_max"] = (
+            float("inf") if cap is None else cap.to_numpy()
+        )
+        logger.info(
+            f"{len(names)} H2 store(s) priced as '{tech}' at "
+            f"{costs.at[tech, 'capital_cost']:.1f} EUR/MWh/a"
+            + (
+                " (uncapped)"
+                if cap is None
+                else f" (capped at {cap.sum() / 1e6:.0f} TWh total)"
+            )
+            + f": {', '.join(sorted(node[mask]))}"
+        )
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -366,9 +493,16 @@ if __name__ == "__main__":
             "Point this rule at a run composed with sector.enabled: false."
         )
 
+    # Deliberately OUTSIDE the aro.heat branch, so the no-heat baseline and the heat run
+    # differ in exactly one thing. Gated on `sector.hydrogen_underground_storage` rather than
+    # on `aro.heat.enable`, which is about a different sector entirely.
+    # processed costs are wide: technology index, parameter columns.
+    costs = pd.read_csv(snakemake.input.costs, index_col=0)
+    cap_hydrogen_storage(n, snakemake.input.h2_cavern, costs, snakemake.params.sector)
+
     if not params["enable"]:
         logger.info(
-            "aro.heat.enable is false -- writing the network through unchanged."
+            "aro.heat.enable is false -- writing the network through with no heat load."
         )
         n.export_to_netcdf(snakemake.output.network)
     else:
@@ -408,8 +542,6 @@ if __name__ == "__main__":
             snakemake.input.heating_efficiencies, index_col=[1, 0]
         ).loc[year]
         pop_layout = pd.read_csv(snakemake.input.pop_layout, index_col=0)
-        # processed costs are wide: technology index, parameter columns.
-        costs = pd.read_csv(snakemake.input.costs, index_col=0)
 
         electric_nodes = n.loads.index[n.loads.carrier == ELECTRICITY_CARRIER]
         metered = n.loads_t.p_set[electric_nodes].copy()

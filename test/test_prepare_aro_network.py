@@ -293,3 +293,127 @@ def test_config_shares_are_applied(networks):
         "test constants have drifted from config/test/config.prepare_aro.yaml"
     )
     assert aro.loads.index.str.startswith("BE").any()
+
+
+# ---------------------------------------------------------------------------------------------
+# H2 cavern/tank split (`cap_hydrogen_storage`)
+#
+# Built on a synthetic network rather than the fixtures above, so these run without either
+# snakemake build. The logic under test is a re-expression of upstream's inline cavern filter
+# in `prepare_sector_network.add_storage_and_grids`, and the thresholds (>2 TWh floor, 1000 TWh
+# clip) are the part most likely to drift if upstream changes them.
+# ---------------------------------------------------------------------------------------------
+
+CAVERN_COSTS = pd.DataFrame(
+    {"capital_cost": [112.4, 2797.5], "lifetime": [100.0, 30.0]},
+    index=[
+        "hydrogen storage underground",
+        "hydrogen storage tank type 1 including compressor",
+    ],
+)
+CAVERN_OPTIONS = {
+    "hydrogen_underground_storage": True,
+    "hydrogen_underground_storage_locations": ["onshore", "nearshore"],
+}
+
+
+def _h2_network(nodes):
+    """Minimal stand-in for what `add_electricity.attach_stores` leaves behind."""
+    n = pypsa.Network()
+    n.add("Bus", nodes, carrier="AC")
+    n.add("Bus", [f"{b} H2" for b in nodes], location=nodes, carrier="H2")
+    n.add(
+        "Store",
+        [f"{b} H2" for b in nodes],
+        bus=[f"{b} H2" for b in nodes],
+        carrier="H2",
+        e_nom_extendable=True,
+        capital_cost=112.4,
+        lifetime=100.0,
+    )
+    return n
+
+
+@pytest.fixture
+def cavern_csv(tmp_path):
+    """Potentials in TWh: one clipped, one ordinary, one below the floor, one absent."""
+    path = tmp_path / "salt_cavern_potentials.csv"
+    pd.DataFrame(
+        {
+            "nearshore": [1200.0, 10.0, 0.5],
+            "offshore": [
+                9999.0,
+                9999.0,
+                9999.0,
+            ],  # never summed: not in the locations list
+            "onshore": [300.0, 15.0, 0.4],
+        },
+        index=["N0", "N1", "N2"],
+    ).rename_axis("name").to_csv(path)
+    return str(path)
+
+
+def test_cavern_split_costs_and_caps(cavern_csv):
+    """Above the floor -> capped cavern; below or absent -> uncapped tank."""
+    from scripts.prepare_aro_network import cap_hydrogen_storage
+
+    n = _h2_network(["N0", "N1", "N2", "N3"])
+    cap_hydrogen_storage(n, cavern_csv, CAVERN_COSTS, CAVERN_OPTIONS)
+    s = n.stores
+
+    # N0: 1200 + 300 = 1500 TWh, clipped to the 1000 TWh per-site limit. N1: 25 TWh, kept whole.
+    assert s.at["N0 H2", "e_nom_max"] == pytest.approx(1e9)
+    assert s.at["N1 H2", "e_nom_max"] == pytest.approx(25e6)
+    for node in ["N0", "N1"]:
+        assert s.at[f"{node} H2", "capital_cost"] == pytest.approx(112.4)
+        assert s.at[f"{node} H2", "lifetime"] == pytest.approx(100.0)
+
+    # N2 is 0.9 TWh, below the 2 TWh floor; N3 is absent from the dataset entirely.
+    for node in ["N2", "N3"]:
+        assert s.at[f"{node} H2", "e_nom_max"] == float("inf")
+        assert s.at[f"{node} H2", "capital_cost"] == pytest.approx(2797.5)
+        assert s.at[f"{node} H2", "lifetime"] == pytest.approx(30.0)
+
+
+def test_cavern_split_offshore_excluded(cavern_csv):
+    """Only the configured locations are summed; offshore alone must not qualify a node."""
+    from scripts.prepare_aro_network import cap_hydrogen_storage
+
+    n = _h2_network(["N2"])
+    cap_hydrogen_storage(n, cavern_csv, CAVERN_COSTS, CAVERN_OPTIONS)
+    assert n.stores.at["N2 H2", "e_nom_max"] == float("inf"), (
+        "a 9999 TWh offshore potential qualified a node whose onshore+nearshore is 0.9 TWh"
+    )
+
+
+def test_cavern_split_disabled_gives_all_tanks(cavern_csv):
+    """
+    `hydrogen_underground_storage: false` is the all-tank sensitivity, not a no-op.
+
+    Deliberately NOT upstream's behaviour: `prepare_sector_network` rebinds `h2_caverns` to
+    the filtered Series only inside its `if`, so with the flag off it takes the symmetric
+    difference against the raw CSV index and leaves every node the CSV lists with no H2 store
+    at all (7 of 8 on de-heat-8). This asserts the intended reading of the flag -- see
+    `cap_hydrogen_storage`'s docstring before changing it back.
+    """
+    from scripts.prepare_aro_network import cap_hydrogen_storage
+
+    n = _h2_network(["N0", "N1"])
+    cap_hydrogen_storage(
+        n,
+        cavern_csv,
+        CAVERN_COSTS,
+        {**CAVERN_OPTIONS, "hydrogen_underground_storage": False},
+    )
+    assert n.stores.capital_cost.tolist() == pytest.approx([2797.5, 2797.5])
+    assert (n.stores.e_nom_max == float("inf")).all()
+
+
+def test_cavern_split_without_h2_stores_is_a_noop(cavern_csv):
+    """A network built with `Store: [battery]` must pass through, not raise."""
+    from scripts.prepare_aro_network import cap_hydrogen_storage
+
+    n = pypsa.Network()
+    n.add("Bus", ["N0"], carrier="AC")
+    cap_hydrogen_storage(n, cavern_csv, CAVERN_COSTS, CAVERN_OPTIONS)
+    assert n.stores.empty

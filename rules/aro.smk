@@ -69,6 +69,11 @@ rule prepare_aro_network:
         district_heat_share=resources("district_heat_share_{horizon}.csv"),
         pop_layout=resources("pop_layout.csv"),
         costs=resources("costs_{horizon}_processed.csv"),
+        # Produced by `build_salt_cavern_potentials` in build_sector.smk, which is NOT gated
+        # on `sector.enabled` -- same property that lets this rule read the heat resources
+        # from an electricity-only run. Without it, carrier `H2` keeps attach_stores' uncapped
+        # *underground* cost at every node (dump/todos.md sec -3).
+        h2_cavern=resources("salt_cavern_potentials.csv"),
     output:
         network=resources("networks/composed_aro_{horizon}.nc"),
     log:
@@ -89,7 +94,7 @@ rule prepare_aro_network:
         # memory: aro-heat-temporal-alignment
         clustering_temporal=config_provider("clustering", "temporal"),
     message:
-        "Adding exogenous electrified-heat load to composed network for {wildcards.horizon}"
+        "Preparing ARO network for {wildcards.horizon} (exogenous heat load, H2 cavern/tank split)"
     script:
         scripts("prepare_aro_network.py")
 
