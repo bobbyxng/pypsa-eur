@@ -75,10 +75,23 @@ class AroHeatConfig(ConfigModel):
     )
 
 
+class AroH2TurbineConfig(ConfigModel):
+    """Configuration for `aro.h2_turbine` settings."""
+
+    technologies: list[str] = Field(
+        default_factory=list,
+        description="Gas turbines offered alongside the fuel cell for H2 re-electrification, named by their cost-table row, e.g. ['OCGT', 'CCGT']. `attach_stores` hardcodes `fuel cell` as carrier H2's only discharger, so an electricity-only network re-electrifies hydrogen solely at ~206k EUR/MW_el/a, which a CCGT beats on both cost and efficiency. Which turbine wins depends on capacity factor, so offer both and let the optimiser split. Empty by default so existing runs are unchanged.",
+    )
+
+
 class AroConfig(ConfigModel):
     """Configuration for top-level `aro` settings."""
 
     heat: AroHeatConfig = Field(
         default_factory=AroHeatConfig,
         description="Exogenous electrified-heat load added by `prepare_aro_network`.",
+    )
+    h2_turbine: AroH2TurbineConfig = Field(
+        default_factory=AroH2TurbineConfig,
+        description="Second H2 discharger added by `prepare_aro_network`.",
     )

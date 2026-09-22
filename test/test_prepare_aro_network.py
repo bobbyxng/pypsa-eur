@@ -331,6 +331,14 @@ def _h2_network(nodes):
         capital_cost=112.4,
         lifetime=100.0,
     )
+    n.add(
+        "Link",
+        [f"{b} H2 Fuel Cell" for b in nodes],
+        bus0=[f"{b} H2" for b in nodes],
+        bus1=nodes,
+        carrier="H2 Fuel Cell",
+        p_nom_extendable=True,
+    )
     return n
 
 
@@ -417,3 +425,55 @@ def test_cavern_split_without_h2_stores_is_a_noop(cavern_csv):
     n.add("Bus", ["N0"], carrier="AC")
     cap_hydrogen_storage(n, cavern_csv, CAVERN_COSTS, CAVERN_OPTIONS)
     assert n.stores.empty
+
+
+H2_TURBINE_COSTS = pd.DataFrame(
+    {
+        "capital_cost": [57123.0, 126432.0, 205583.0],
+        "efficiency": [0.43, 0.60, 0.50],
+        "VOM": [6.0, 5.3, 0.0],
+        "lifetime": [25.0, 25.0, 10.0],
+    },
+    index=["OCGT", "CCGT", "fuel cell"],
+)
+
+
+def test_h2_turbines_mirror_the_fuel_cell():
+    """One link per technology per fuel cell, same buses, that row's cost on the H2 side."""
+    from scripts.prepare_aro_network import add_h2_turbines
+
+    n = _h2_network(["N0", "N1"])
+    add_h2_turbines(n, H2_TURBINE_COSTS, {"technologies": ["OCGT", "CCGT"]})
+
+    fc = n.links[n.links.carrier == "H2 Fuel Cell"]
+    for tech, capex, eff in [("OCGT", 57123.0, 0.43), ("CCGT", 126432.0, 0.60)]:
+        t = n.links[n.links.carrier == f"H2 {tech}"]
+        assert len(t) == len(fc) == 2
+        assert sorted(zip(t.bus0, t.bus1)) == sorted(zip(fc.bus0, fc.bus1))
+        assert t.p_nom_extendable.all()
+        assert t.efficiency.eq(eff).all()
+        # p_nom sits on bus0, so the per-MW_el cost is capital_cost / efficiency.
+        assert (t.capital_cost / t.efficiency).round(0).eq(capex).all()
+
+
+def test_h2_turbines_empty_or_without_h2_is_a_noop():
+    """No technologies, or no H2 discharger to pair with, leaves the network alone."""
+    from scripts.prepare_aro_network import add_h2_turbines
+
+    n = _h2_network(["N0"])
+    add_h2_turbines(n, H2_TURBINE_COSTS, {"technologies": []})
+    assert n.links.carrier.eq("H2 Fuel Cell").all()
+
+    m = pypsa.Network()
+    m.add("Bus", ["N0"], carrier="AC")
+    add_h2_turbines(m, H2_TURBINE_COSTS, {"technologies": ["OCGT"]})
+    assert m.links.empty
+
+
+def test_h2_turbines_reject_unknown_technology():
+    """A technology the cost table lacks must fail loud, not silently add nothing."""
+    from scripts.prepare_aro_network import add_h2_turbines
+
+    n = _h2_network(["N0"])
+    with pytest.raises(ValueError, match="cost table does not carry"):
+        add_h2_turbines(n, H2_TURBINE_COSTS, {"technologies": ["OCGT", "Allam"]})

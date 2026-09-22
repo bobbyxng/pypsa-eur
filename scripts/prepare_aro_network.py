@@ -70,6 +70,11 @@ CARRIER_COLORS = {
     "rural resistive heater electricity": "#fdbb84",
     "urban decentral resistive heater electricity": "#fc8d59",
     "urban central resistive heater electricity": "#d7301f",
+    # `plotting.default.yaml` cannot supply these: `sanitize_carriers` runs inside
+    # `compose_network`, before this script adds them. OCGT keeps upstream's `H2 turbine`
+    # purple; the CCGT is a darker shade of it.
+    "H2 OCGT": "#991f83",
+    "H2 CCGT": "#6b1459",
 }
 
 # Carrier that `add_electricity.attach_stores` gives the H2 store, bus and links. Upstream's
@@ -463,6 +468,77 @@ def cap_hydrogen_storage(
         )
 
 
+def add_h2_turbines(n: pypsa.Network, costs: pd.DataFrame, options: dict) -> None:
+    """
+    Offer gas turbines burning stored hydrogen alongside the fuel cell.
+
+    `add_electricity.STORE_LOOKUP` hardcodes `fuel cell` as carrier H2's only discharger, so
+    an electricity-only network re-electrifies hydrogen only at ~206k EUR/MW_el/a -- which
+    the CCGT beats on both axes (126k, 0.60 against 0.50), so the fuel cell is dominated the
+    moment anything else is offered. Which turbine wins is not something to assume: the
+    marginal unit for a rare multi-day blackout runs at a capacity factor where cheap MW
+    beats efficient MW, while a unit sized for seasonal operation may not. Offering both
+    leaves that to the optimiser, and the split it picks is a result.
+
+    Both are literature choices, not inventions: the sector-coupled path exposes exactly this
+    as `hydrogen_turbine` at OCGT cost, and Brown & Hampp (Joule 2023) re-electrify hydrogen
+    through a CCGT. Their code calls that a `hydrogen_turbine` too, which is why these links
+    are named for the machine rather than inheriting the ambiguous upstream carrier.
+
+    Cost expressions follow `prepare_sector_network.add_h2_gas_infrastructure`, including its
+    open TODO that gas-turbine costs stand in for hydrogen-specific ones. Note `VOM`, not
+    `marginal_cost`: the latter includes the gas these rows were costed for.
+    """
+    technologies = options["technologies"]
+    if not technologies:
+        return
+
+    missing = [t for t in technologies if t not in costs.index]
+    if missing:
+        raise ValueError(
+            f"aro.h2_turbine.technologies names {missing}, which the cost table does not "
+            f"carry. Available gas turbines: {sorted(set(costs.index) & {'OCGT', 'CCGT'})}."
+        )
+
+    # Pair on the existing discharger rather than a name-mangled string: its bus0 IS the H2
+    # bus and its bus1 the AC bus it feeds, so this is exact whatever the naming convention.
+    fuel_cells = n.links.index[n.links.carrier == "H2 Fuel Cell"]
+    if fuel_cells.empty:
+        logger.warning(
+            f"aro.h2_turbine.technologies is {technologies} but the network has no "
+            "'H2 Fuel Cell' links, so carrier H2 is not present as a Store. Not adding "
+            "hydrogen turbines."
+        )
+        return
+
+    for tech in technologies:
+        carrier = f"H2 {tech}"
+        if carrier not in n.carriers.index:
+            n.add("Carrier", [carrier], color=CARRIER_COLORS.get(carrier, "#999999"))
+
+        n.add(
+            "Link",
+            n.links.bus0[fuel_cells].values,
+            suffix=f" {tech}",
+            bus0=n.links.bus0[fuel_cells].values,
+            bus1=n.links.bus1[fuel_cells].values,
+            carrier=carrier,
+            p_nom_extendable=True,
+            efficiency=costs.at[tech, "efficiency"],
+            # NB: these costs are per MW_el while p_nom sits on bus0, the H2 side.
+            capital_cost=costs.at[tech, "capital_cost"] * costs.at[tech, "efficiency"],
+            marginal_cost=costs.at[tech, "VOM"] * costs.at[tech, "efficiency"],
+            lifetime=costs.at[tech, "lifetime"],
+        )
+        logger.info(
+            f"Added {len(fuel_cells)} {carrier} link(s) at "
+            f"{costs.at[tech, 'capital_cost']:.0f} EUR/MW_el/a and efficiency "
+            f"{costs.at[tech, 'efficiency']:.2f}, against the fuel cell's "
+            f"{costs.at['fuel cell', 'capital_cost']:.0f} at "
+            f"{costs.at['fuel cell', 'efficiency']:.2f}."
+        )
+
+
 if __name__ == "__main__":
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
@@ -499,6 +575,7 @@ if __name__ == "__main__":
     # processed costs are wide: technology index, parameter columns.
     costs = pd.read_csv(snakemake.input.costs, index_col=0)
     cap_hydrogen_storage(n, snakemake.input.h2_cavern, costs, snakemake.params.sector)
+    add_h2_turbines(n, costs, snakemake.params.aro_h2_turbine)
 
     if not params["enable"]:
         logger.info(

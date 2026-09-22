@@ -221,6 +221,30 @@
               "type": "object"
             }
           }
+        },
+        "h2_turbine": {
+          "description": "Configuration for `aro.h2_turbine` settings.",
+          "properties": {
+            "technologies": {
+              "description": "Gas turbines offered alongside the fuel cell for H2 re-electrification, named by their cost-table row, e.g. ['OCGT', 'CCGT']. `attach_stores` hardcodes `fuel cell` as carrier H2's only discharger, so an electricity-only network re-electrifies hydrogen solely at ~206k EUR/MW_el/a, which a CCGT beats on both cost and efficiency. Which turbine wins depends on capacity factor, so offer both and let the optimiser split. Empty by default so existing runs are unchanged.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          }
+        }
+      }
+    },
+    "AroH2TurbineConfig": {
+      "description": "Configuration for `aro.h2_turbine` settings.",
+      "properties": {
+        "technologies": {
+          "description": "Gas turbines offered alongside the fuel cell for H2 re-electrification, named by their cost-table row, e.g. ['OCGT', 'CCGT']. `attach_stores` hardcodes `fuel cell` as carrier H2's only discharger, so an electricity-only network re-electrifies hydrogen solely at ~206k EUR/MW_el/a, which a CCGT beats on both cost and efficiency. Which turbine wins depends on capacity factor, so offer both and let the optimiser split. Empty by default so existing runs are unchanged.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       }
     },
@@ -14494,6 +14518,18 @@
               },
               "description": "Heat-pump source per heat system, selecting which COP curve from `cop_profiles` applies. Keys must match the `heat_system` coordinate of the COP file.",
               "type": "object"
+            }
+          }
+        },
+        "h2_turbine": {
+          "description": "Configuration for `aro.h2_turbine` settings.",
+          "properties": {
+            "technologies": {
+              "description": "Gas turbines offered alongside the fuel cell for H2 re-electrification, named by their cost-table row, e.g. ['OCGT', 'CCGT']. `attach_stores` hardcodes `fuel cell` as carrier H2's only discharger, so an electricity-only network re-electrifies hydrogen solely at ~206k EUR/MW_el/a, which a CCGT beats on both cost and efficiency. Which turbine wins depends on capacity factor, so offer both and let the optimiser split. Empty by default so existing runs are unchanged.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             }
           }
         }

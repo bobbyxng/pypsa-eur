@@ -1552,6 +1552,8 @@ aro:
       rural: ground
       urban decentral: air
       urban central: air
+  h2_turbine:
+    technologies: []
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#overpass_api
 overpass_api:
