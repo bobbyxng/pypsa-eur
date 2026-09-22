@@ -47,6 +47,8 @@
 
 * Fix: focus_weights related TypeError during cluster_network ([#2277](https://github.com/PyPSA/pypsa-eur/pull/2277))
 
+* Fix: `electricity: max_hours: iron-air` now yields the configured hours at rated output. The default of 100 h was sizing the internal store, which PyPSA drains by `1/efficiency_dispatch`, so the storage unit delivered only 63 h at rated AC output while being charged the full cost of Form Energy's 100-hour product. `STORE_LOOKUP` now records that iron-air's duration and cost per kWh are both quoted on dispatched energy, and the store is sized accordingly. Cost per MW is unchanged and no other storage technology is affected, but iron-air is now ~1.6x more capable per euro, so results that include it will change ([#2298](https://github.com/PyPSA/pypsa-eur/pull/2298)).
+
 ## PyPSA-Eur v2026.08.0 (19th August 2026)
 
 **Features**
