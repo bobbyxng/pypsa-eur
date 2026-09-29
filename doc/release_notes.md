@@ -5,6 +5,8 @@
 
 <!-- Upcoming Release -->
 <!-- ================= -->
+* Feature: `clustering: administrative: countries` also accepts NUTS codes of subregions (e.g. `DEA: 3`) to set a different administrative level within a country ([#2146](https://github.com/PyPSA/pypsa-eur/pull/2146)).
+
 
 ## PyPSA-Eur v2026.09.0 (25th September 2026)
 
