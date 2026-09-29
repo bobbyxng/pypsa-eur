@@ -5,6 +5,7 @@
 
 <!-- Upcoming Release -->
 <!-- ================= -->
+* Fix: Per-country levels in `clustering: administrative: countries` are no longer ignored. Country keys directly under `clustering: administrative` remain supported ([#2210](https://github.com/PyPSA/pypsa-eur/pull/2210)).
 * Feature: `clustering: administrative: countries` also accepts NUTS codes of subregions (e.g. `DEA: 3`) to set a different administrative level within a country ([#2146](https://github.com/PyPSA/pypsa-eur/pull/2146)).
 
 
