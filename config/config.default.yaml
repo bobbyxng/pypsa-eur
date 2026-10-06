@@ -2,27 +2,27 @@
 ---
 # yaml-language-server: $schema=./schema.default.json
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#version
-version: v2026.08.0
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#version_cf
+version: v2026.09.0
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#tutorial
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#tutorial_cf
 tutorial: false
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#logging
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#logging_cf
 logging:
   level: INFO
   format: "%(levelname)s:%(name)s:%(message)s"
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#remote
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#remote_cf
 remote:
   ssh: ""
   path: ""
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#container
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#container_cf
 container:
   image: ""
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#run_cf
 run:
   prefix: ""
   name: ""
@@ -36,14 +36,14 @@ run:
   use_shadow_directory: false
   default_target_rule: all
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#foresight
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#foresight_cf
 foresight: overnight
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#planning_horizons
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#planning_horizons_cf
 planning_horizons:
 - 2050
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#countries
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#countries_cf
 countries:
 - AL
 - AT
@@ -80,17 +80,17 @@ countries:
 - SK
 - XK
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#snapshots
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#snapshots_cf
 snapshots:
   start: "2013-01-01"
   end: "2014-01-01"
   inclusive: left
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#enable
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#enable_cf
 enable:
   drop_leap_day: true
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#co2_budget
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#co2_budget_cf
 co2_budget:
   emissions_scope: CO2
   relative: true
@@ -104,7 +104,7 @@ co2_budget:
     2050: 0.0
   lower:
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#electricity
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#electricity_cf
 electricity:
   voltages:
   - 220.0
@@ -183,7 +183,7 @@ electricity:
     by_country: false
   transmission_limit: vopt
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#atlite
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#atlite_cf
 atlite:
   default_cutout: "europe-2013-sarah3-era5"
   nprocesses: 1
@@ -214,7 +214,7 @@ atlite:
         monthly_requests: true
         tmpdir: ./cutouts_tmp/
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#renewable
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#renewable_cf
 renewable:
   onwind:
     cutout: default
@@ -418,7 +418,7 @@ renewable:
     eia_correct_by_capacity: false
     eia_approximate_missing: false
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#conventional
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#conventional_cf
 conventional:
   unit_commitment: false
   dynamic_fuel_price: false
@@ -426,7 +426,7 @@ conventional:
   nuclear:
     p_max_pu: data/nuclear_p_max_pu.csv
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#lines
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#lines_cf
 lines:
   types:
     63.0: "94-AL1/15-ST1A 20.0"
@@ -455,7 +455,7 @@ lines:
     max_voltage_difference: false
     max_line_rating: false
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#links
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#links_cf
 links:
   p_max_pu: 1.0
   p_min_pu: -1.0
@@ -464,7 +464,7 @@ links:
   length_factor: 1.25
   under_construction: keep
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#transmission_projects
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#transmission_projects_cf
 transmission_projects:
   enable: true
   include:
@@ -480,13 +480,13 @@ transmission_projects:
   - confirmed
   new_link_capacity: zero
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#transformers
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#transformers_cf
 transformers:
   x: 0.1
   s_nom: 2000.0
   type: ""
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#load
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#load_cf
 load:
   fill_gaps:
     enable: true
@@ -501,7 +501,7 @@ load:
     gdp: 0.6
     population: 0.4
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#pypsa_eur
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#pypsa_eur_cf
 pypsa_eur:
   Bus:
   - AC
@@ -521,12 +521,12 @@ pypsa_eur:
   - hydro
   Store: []
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#energy
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#energy_cf
 energy:
   energy_totals_year: 2023
   base_emissions_year: 1990
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#biomass
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#biomass_cf
 biomass:
   year: 2030
   scenario: ENS_Med
@@ -569,7 +569,7 @@ biomass:
     2045: 1
     2050: 1
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#solar_thermal
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#solar_thermal_cf
 solar_thermal:
   clearsky_model: simple
   orientation:
@@ -577,7 +577,7 @@ solar_thermal:
     azimuth: 180.0
   cutout: default
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#existing_capacities
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#existing_capacities_cf
 existing_capacities:
   grouping_years_power:
   - 1900
@@ -671,7 +671,7 @@ existing_capacities:
     - IT
     year: 2025
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#sector
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#sector_cf
 sector:
   enabled: true
   transport: true
@@ -962,7 +962,6 @@ sector:
   use_electrolysis_waste_heat: 0.25
   electricity_transmission_grid: true
   electricity_distribution_grid: true
-  electricity_distribution_grid_cost_factor: 1.0
   electricity_grid_connection: true
   transmission_efficiency:
     enable:
@@ -970,7 +969,9 @@ sector:
     - H2 pipeline
     - H2 pipeline retrofitted
     - gas pipeline
+    - gas pipeline new
     - electricity distribution grid
+    - CO2 pipeline
     DC:
       efficiency_static: 0.98
       efficiency_per_1000km: 0.977
@@ -983,8 +984,13 @@ sector:
     gas pipeline:
       efficiency_per_1000km: 1
       compression_per_1000km: 0.01
+    gas pipeline new:
+      efficiency_per_1000km: 1
+      compression_per_1000km: 0.01
     electricity distribution grid:
       efficiency_static: 0.97
+    CO2 pipeline:
+      efficiency_per_1000km: 1
   H2_network: true
   gas_network: true
   H2_retrofit: false
@@ -1042,7 +1048,7 @@ sector:
       gas: 122
       oil: 125
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#industry
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#industry_cf
 industry:
   St_primary_fraction:
     2020: 0.6
@@ -1128,7 +1134,7 @@ industry:
   reference_year: 2023
   oil_refining_emissions: 0.013
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#costs
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#costs_cf
 costs:
   year:
   social_discountrate: 0.02
@@ -1152,7 +1158,7 @@ costs:
     dynamic: false
     rolling_window: 90
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#clustering
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#clustering_cf
 clustering:
   mode: busmap
   administrative:
@@ -1187,7 +1193,7 @@ clustering:
     segmentation: false
     representative: false
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#adjustments
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#adjustments_cf
 adjustments:
   electricity: false
   sector:
@@ -1197,7 +1203,7 @@ adjustments:
           capital_cost: 1.0
     absolute: false
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#solving
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#solving_cf
 solving:
   options:
     clip_p_max_pu: 0.01
@@ -1355,7 +1361,7 @@ solving:
   memory_logging_frequency: 5
   runtime: 48h
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#data
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#data_cf
 data:
   version_files:
   - data/versions.csv
@@ -1540,7 +1546,7 @@ data:
     source: archive
     version: latest
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#aro
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#aro_cf
 aro:
   heat:
     enable: false
@@ -1555,7 +1561,7 @@ aro:
   h2_turbine:
     technologies: []
 
-# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#overpass_api
+# docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#overpass_api_cf
 overpass_api:
   url: "https://overpass-api.de/api/interpreter"
   max_tries: 5
