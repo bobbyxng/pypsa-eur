@@ -5,12 +5,14 @@
 """
 Prepare an electricity-only network for the ARO/C&CG workflow.
 
-Two independent layers, both fork-specific and neither part of upstream PyPSA-Eur:
+Independent layers, fork-specific additions to upstream PyPSA-Eur:
 
 1. an exogenous electrified-heat load, added as Loads on the existing AC buses
    (`aro.heat.enable`, described below);
 2. the H2 cavern-vs-tank split that `attach_stores` omits on the electricity path
-   (`cap_hydrogen_storage`, gated on `sector.hydrogen_underground_storage`).
+   (`cap_hydrogen_storage`, gated on `sector.hydrogen_underground_storage`);
+3. optional H2 turbines (`aro.h2_turbine.technologies`);
+4. optional purchased renewable methanol, local tanks and turbines (`aro.methanol`).
 
 (2) runs unconditionally so the no-heat baseline and the heat run differ in exactly one thing.
 
@@ -36,20 +38,17 @@ which reproduces `add_heat` exactly rather than approximately -- see
 import logging
 from itertools import product
 
+import numpy as np
 import pandas as pd
 import pypsa
 import xarray as xr
 
-from scripts._helpers import (
-    configure_logging,
-    get,
-    get_temporal_resolution,
-    set_scenario_config,
-)
 from scripts.definitions.heat_sector import HeatSector
 from scripts.definitions.heat_system import HeatSystem
-from scripts.prepare_sector_network import build_heat_demand
 
+# Import the workflow/sector builders only at their call sites below: standalone
+# investment helpers are also tested in PyPSARO's leaner environment, which does
+# not install the full geospatial and powerplantmatching preparation stack.
 logger = logging.getLogger(__name__)
 
 # `build_heat_demand` locates the loads to correct via `carrier == "electricity"`. Upstream's
@@ -86,6 +85,12 @@ TANK_TECH = "hydrogen storage tank type 1 including compressor"
 # below 2 TWh are dropped as too small to develop, and no single site may exceed 1000 TWh.
 CAVERN_MIN_POTENTIAL_TWH = 2.0
 CAVERN_MAX_PER_SITE_MWH = 1e9
+
+# IRENA / Methanol Institute (2021), Table 10, p. 57: 15.8 GJ/m3 LHV.
+# Keep all inventories and fuel flows on the LHV basis; costs below arrive already
+# annualised AND scaled to the composed network's modelled horizon.
+METHANOL_MWH_PER_M3 = 15.8 / 3.6
+TANK_TECHNOLOGY = "General liquid hydrocarbon storage (product)"
 
 
 def cop_heat_system(heat_system: HeatSystem) -> str:
@@ -127,6 +132,8 @@ def to_network_resolution(
     the 3-hourly PEAK, which is the quantity this study turns on. Reading the method from config
     removes the inference entirely. memory: aro-heat-temporal-alignment
     """
+    from scripts._helpers import get_temporal_resolution
+
     resolution = get_temporal_resolution(temporal)
     if resolution is not None and resolution[0] == "representative":
         return df.reindex(snapshots)
@@ -184,6 +191,8 @@ def add_heat_load(
     investment_year: int,
 ) -> None:
     """Convert heat demand into electricity loads on the AC buses, per heat system."""
+    from scripts._helpers import get
+
     cop = xr.open_dataset(cop_profiles_file)
     # NB the data variable is named `temperature` but holds COP -- a mislabel upstream, not the
     # wrong file (values sit at 2.4-5.4, not degrees). See memory: pypsa-eur-sector-run-gotchas.
@@ -539,7 +548,150 @@ def add_h2_turbines(n: pypsa.Network, costs: pd.DataFrame, options: dict) -> Non
         )
 
 
+def add_methanol(n: pypsa.Network, costs: pd.DataFrame, options: dict) -> None:
+    """
+    Add independent tank energy and turbine power investment at every AC bus.
+
+    Tagged local suppliers are disabled by PyPSARO during every outage.
+    Reserve-only turbines are enabled only inside the outage window.
+    Independent local fuel buses prevent bypassing local inventories. Cyclic Stores
+    make every consumed MWh payable; they do not supply a free initial stock. Outage foresight remains unchanged.
+    memory: purchased-methanol-backstop
+    """
+    if not options.get("enable", False):
+        return
+    # Validated by AroMethanolConfig at the workflow boundary. Keep the network
+    # builder independent of the full PyPSA-Eur config registry so the parent ARO
+    # environment can exercise it in cross-workflow tests.
+    fuel_price = options["fuel_price"]
+    technologies = options.get("technologies", ["OCGT", "CCGT"])
+    reserve_only = options.get("reserve_only", False)
+    nodes = n.buses.index[n.buses.carrier == "AC"]
+    if nodes.empty:
+        raise ValueError("aro.methanol requires at least one AC bus")
+    # A sector network may already carry a pooled methanol/carbon system. Mixing it
+    # with externally neutral fuel would silently erase its accounting boundary.
+    carriers = ["methanol", "methanol supply"] + [
+        f"{tech} methanol" for tech in technologies
+    ]
+    if n.carriers.index.isin(carriers).any():
+        raise ValueError("aro.methanol requires a network without methanol carriers")
+    requirements = {TANK_TECHNOLOGY: ["capital_cost", "lifetime"]}
+    requirements.update(
+        {
+            tech: ["capital_cost", "efficiency", "VOM", "lifetime"]
+            for tech in technologies
+        }
+    )
+    for tech, columns in requirements.items():
+        if tech not in costs.index or not set(columns).issubset(costs.columns):
+            raise ValueError(
+                f"Missing processed methanol cost data for {tech}: {columns}"
+            )
+        values = costs.loc[tech, columns].astype(float)
+        if (
+            not np.isfinite(values).all()
+            or (values < 0).any()
+            or values["lifetime"] <= 0
+        ):
+            raise ValueError(f"Invalid processed methanol cost data for {tech}")
+        if "efficiency" in columns and not 0 < values["efficiency"] <= 1:
+            raise ValueError(f"Invalid methanol turbine efficiency for {tech}")
+
+    fuel_buses = nodes + " methanol"
+    suppliers = nodes + " methanol supply"
+    names = {
+        "Bus": fuel_buses,
+        "Store": nodes + " methanol tank",
+        "Generator": suppliers,
+        "Link": pd.Index(
+            [f"{node} {tech} methanol" for tech in technologies for node in nodes]
+        ),
+    }
+    for component, added in names.items():
+        if not added.intersection(n.components[component].static.index).empty:
+            raise ValueError(f"aro.methanol would overwrite existing {component} names")
+
+    # Zero is NET externally assumed CO2, not combustion chemistry. No atmospheric
+    # withdrawal/capture credit is added: this layer cannot offset fossil emissions.
+    n.add(
+        "Carrier",
+        carriers,
+        co2_emissions=0,
+        color=["#d95f02", "#e6ab02"]
+        + ["#e7298a" if t == "OCGT" else "#7570b3" for t in technologies],
+    )
+    n.add(
+        "Bus",
+        fuel_buses,
+        carrier="methanol",
+        location=nodes,
+        unit="MWh_LHV",
+        x=n.buses.loc[nodes, "x"].to_numpy(),
+        y=n.buses.loc[nodes, "y"].to_numpy(),
+    )
+    # A finite normalization avoids inf * 0 during outages. The actual upper
+    # dispatch bound is infinite: there is no delivery-capacity investment or cap.
+    n.add(
+        "Generator",
+        suppliers,
+        bus=fuel_buses,
+        carrier="methanol supply",
+        p_nom=1.0,
+        p_max_pu=0.0 if reserve_only else np.inf,
+        marginal_cost=fuel_price,
+    )
+    n.generators.loc[suppliers, "outage_supply"] = 1.0
+    n.add(
+        "Store",
+        nodes + " methanol tank",
+        bus=fuel_buses,
+        carrier="methanol",
+        e_nom_extendable=True,
+        e_cyclic=not reserve_only,
+        capital_cost=costs.at[TANK_TECHNOLOGY, "capital_cost"] / METHANOL_MWH_PER_M3,
+        lifetime=costs.at[TANK_TECHNOLOGY, "lifetime"],
+    )
+    if reserve_only:
+        tanks = nodes + " methanol tank"
+        n.stores.loc[tanks, "reserve_stock"] = 1.0
+        n.stores.loc[tanks, "reserve_inventory_cost"] = (
+            fuel_price
+            * options.get("reserve_inventory_carrying_rate", 0.07)
+            * n.snapshot_weightings.objective.sum()
+            / 8760
+        )
+        n.stores.loc[tanks, "reserve_inventory_fixed"] = 0.0
+    for tech in technologies:
+        efficiency = costs.at[tech, "efficiency"]
+        # As in prepare_sector_network.add_methanol_to_power: p_nom is MW of
+        # fuel input, whereas turbine capex and VOM are quoted per electrical MW/MWh.
+        # Using the gas row's marginal_cost would buy fossil gas a second time.
+        n.add(
+            "Link",
+            nodes + f" {tech} methanol",
+            bus0=fuel_buses,
+            bus1=nodes,
+            carrier=f"{tech} methanol",
+            p_nom_extendable=True,
+            p_max_pu=0.0 if reserve_only else 1.0,
+            efficiency=efficiency,
+            capital_cost=costs.at[tech, "capital_cost"] * efficiency,
+            marginal_cost=costs.at[tech, "VOM"] * efficiency
+            + (fuel_price if reserve_only else 0.0),
+            lifetime=costs.at[tech, "lifetime"],
+        )
+        n.links.loc[nodes + f" {tech} methanol", "reserve_only"] = float(reserve_only)
+    logger.info(
+        "Added local CO2-neutral purchased methanol at %s EUR/MWh_LHV to %s nodes; deliveries stop automatically during outages.",
+        fuel_price,
+        len(nodes),
+    )
+
+
 if __name__ == "__main__":
+    from scripts._helpers import configure_logging, set_scenario_config
+
     if "snakemake" not in globals():
         from scripts._helpers import mock_snakemake
 
@@ -576,6 +728,7 @@ if __name__ == "__main__":
     costs = pd.read_csv(snakemake.input.costs, index_col=0)
     cap_hydrogen_storage(n, snakemake.input.h2_cavern, costs, snakemake.params.sector)
     add_h2_turbines(n, costs, snakemake.params.aro_h2_turbine)
+    add_methanol(n, costs, snakemake.params.aro_methanol)
 
     if not params["enable"]:
         logger.info(
@@ -627,6 +780,8 @@ if __name__ == "__main__":
         # from `n.loads_t.p_set` in place, but at hourly resolution against an index this
         # network no longer has, so that write is discarded and redone below. See
         # `electric_heat_supply` for why it cannot simply be reused in place.
+        from scripts.prepare_sector_network import build_heat_demand
+
         heat_demand = build_heat_demand(
             n,
             snakemake.input.hourly_heat_demand_total,

@@ -86,6 +86,7 @@ rule prepare_aro_network:
     params:
         aro_heat=config_provider("aro", "heat"),
         aro_h2_turbine=config_provider("aro", "h2_turbine"),
+        aro_methanol=config_provider("aro", "methanol"),
         energy_totals_year=config_provider("energy", "energy_totals_year"),
         sector=config_provider("sector"),
         # The input network is already temporally aggregated (compose_network folds that in),
@@ -95,7 +96,7 @@ rule prepare_aro_network:
         # memory: aro-heat-temporal-alignment
         clustering_temporal=config_provider("clustering", "temporal"),
     message:
-        "Preparing ARO network for {wildcards.horizon} (exogenous heat load, H2 cavern/tank split, H2 turbines)"
+        "Preparing ARO network for {wildcards.horizon} (heat load, H2 storage/turbines, optional methanol)"
     script:
         scripts("prepare_aro_network.py")
 

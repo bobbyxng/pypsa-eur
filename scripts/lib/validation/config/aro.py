@@ -84,6 +84,48 @@ class AroH2TurbineConfig(ConfigModel):
     )
 
 
+class AroMethanolConfig(ConfigModel, extra="forbid"):
+    """Purchased renewable methanol, local tanks and electricity generation."""
+
+    enable: bool = Field(
+        False,
+        description="Add purchased CO2-neutral methanol at each AC node; no endogenous synthesis or carbon capture.",
+    )
+    fuel_price: float | None = Field(
+        None,
+        ge=0,
+        allow_inf_nan=False,
+        description="Delivered renewable methanol price in EUR/MWh_LHV, required when enabled. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions.",
+    )
+    technologies: list[Literal["OCGT", "CCGT"]] = Field(
+        default_factory=lambda: ["OCGT", "CCGT"],
+        min_length=1,
+        description="Competing methanol turbines; reuse the processed gas-turbine efficiency, capital_cost and VOM, excluding fossil gas fuel costs.",
+    )
+    reserve_only: bool = Field(
+        False,
+        description="Use dedicated emergency methanol stock: invest in shared ready inventory and tanks/turbines, permit generation only during outages, and forbid fuel purchases in recourse. Requires enumeration; normal operation remains part of the robust cost comparison.",
+    )
+
+    reserve_inventory_carrying_rate: float = Field(
+        0.07,
+        ge=0,
+        allow_inf_nan=False,
+        description="Annual financing rate for permanent emergency methanol inventory, assuming unused fuel retains its value. Reserve-only mode charges fuel_price times ready inventory times this rate (scaled to the model horizon), plus consumed fuel as post-event replenishment cost. No fuel purchases are allowed in dispatch.",
+    )
+
+    @model_validator(mode="after")
+    def check_methanol(self):
+        """Do not silently assign a fuel price or duplicate turbine components."""
+        if self.enable and self.fuel_price is None:
+            raise ValueError(
+                "aro.methanol.fuel_price is required when methanol is enabled"
+            )
+        if len(set(self.technologies)) != len(self.technologies):
+            raise ValueError("aro.methanol.technologies must not contain duplicates")
+        return self
+
+
 class AroConfig(ConfigModel):
     """Configuration for top-level `aro` settings."""
 
@@ -94,4 +136,8 @@ class AroConfig(ConfigModel):
     h2_turbine: AroH2TurbineConfig = Field(
         default_factory=AroH2TurbineConfig,
         description="Second H2 discharger added by `prepare_aro_network`.",
+    )
+    methanol: AroMethanolConfig = Field(
+        default_factory=AroMethanolConfig,
+        description="Optional purchased renewable methanol, local storage and turbines.",
     )

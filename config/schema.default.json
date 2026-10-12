@@ -233,6 +233,53 @@
               "type": "array"
             }
           }
+        },
+        "methanol": {
+          "additionalProperties": false,
+          "description": "Purchased renewable methanol, local tanks and electricity generation.",
+          "properties": {
+            "enable": {
+              "default": false,
+              "description": "Add purchased CO2-neutral methanol at each AC node; no endogenous synthesis or carbon capture.",
+              "type": "boolean"
+            },
+            "fuel_price": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Delivered renewable methanol price in EUR/MWh_LHV, required when enabled. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions."
+            },
+            "technologies": {
+              "description": "Competing methanol turbines; reuse the processed gas-turbine efficiency, capital_cost and VOM, excluding fossil gas fuel costs.",
+              "items": {
+                "enum": [
+                  "OCGT",
+                  "CCGT"
+                ],
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "reserve_only": {
+              "default": false,
+              "description": "Use dedicated emergency methanol stock: invest in shared ready inventory and tanks/turbines, permit generation only during outages, and forbid fuel purchases in recourse. Requires enumeration; normal operation remains part of the robust cost comparison.",
+              "type": "boolean"
+            },
+            "reserve_inventory_carrying_rate": {
+              "default": 0.07,
+              "description": "Annual financing rate for permanent emergency methanol inventory, assuming unused fuel retains its value. Reserve-only mode charges fuel_price times ready inventory times this rate (scaled to the model horizon), plus consumed fuel as post-event replenishment cost. No fuel purchases are allowed in dispatch.",
+              "minimum": 0,
+              "type": "number"
+            }
+          }
         }
       }
     },
@@ -326,6 +373,53 @@
           "description": "Fraction served by resistive heaters. Drawn at COP 1, so it costs ~3x the electricity per unit heat and bites hardest in cold snaps when heat-pump COP bottoms out.",
           "maximum": 1.0,
           "minimum": 0.0,
+          "type": "number"
+        }
+      }
+    },
+    "AroMethanolConfig": {
+      "additionalProperties": false,
+      "description": "Purchased renewable methanol, local tanks and electricity generation.",
+      "properties": {
+        "enable": {
+          "default": false,
+          "description": "Add purchased CO2-neutral methanol at each AC node; no endogenous synthesis or carbon capture.",
+          "type": "boolean"
+        },
+        "fuel_price": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Delivered renewable methanol price in EUR/MWh_LHV, required when enabled. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions."
+        },
+        "technologies": {
+          "description": "Competing methanol turbines; reuse the processed gas-turbine efficiency, capital_cost and VOM, excluding fossil gas fuel costs.",
+          "items": {
+            "enum": [
+              "OCGT",
+              "CCGT"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "reserve_only": {
+          "default": false,
+          "description": "Use dedicated emergency methanol stock: invest in shared ready inventory and tanks/turbines, permit generation only during outages, and forbid fuel purchases in recourse. Requires enumeration; normal operation remains part of the robust cost comparison.",
+          "type": "boolean"
+        },
+        "reserve_inventory_carrying_rate": {
+          "default": 0.07,
+          "description": "Annual financing rate for permanent emergency methanol inventory, assuming unused fuel retains its value. Reserve-only mode charges fuel_price times ready inventory times this rate (scaled to the model horizon), plus consumed fuel as post-event replenishment cost. No fuel purchases are allowed in dispatch.",
+          "minimum": 0,
           "type": "number"
         }
       }
@@ -14562,6 +14656,53 @@
                 "type": "string"
               },
               "type": "array"
+            }
+          }
+        },
+        "methanol": {
+          "additionalProperties": false,
+          "description": "Purchased renewable methanol, local tanks and electricity generation.",
+          "properties": {
+            "enable": {
+              "default": false,
+              "description": "Add purchased CO2-neutral methanol at each AC node; no endogenous synthesis or carbon capture.",
+              "type": "boolean"
+            },
+            "fuel_price": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Delivered renewable methanol price in EUR/MWh_LHV, required when enabled. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions."
+            },
+            "technologies": {
+              "description": "Competing methanol turbines; reuse the processed gas-turbine efficiency, capital_cost and VOM, excluding fossil gas fuel costs.",
+              "items": {
+                "enum": [
+                  "OCGT",
+                  "CCGT"
+                ],
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "reserve_only": {
+              "default": false,
+              "description": "Use dedicated emergency methanol stock: invest in shared ready inventory and tanks/turbines, permit generation only during outages, and forbid fuel purchases in recourse. Requires enumeration; normal operation remains part of the robust cost comparison.",
+              "type": "boolean"
+            },
+            "reserve_inventory_carrying_rate": {
+              "default": 0.07,
+              "description": "Annual financing rate for permanent emergency methanol inventory, assuming unused fuel retains its value. Reserve-only mode charges fuel_price times ready inventory times this rate (scaled to the model horizon), plus consumed fuel as post-event replenishment cost. No fuel purchases are allowed in dispatch.",
+              "minimum": 0,
+              "type": "number"
             }
           }
         }

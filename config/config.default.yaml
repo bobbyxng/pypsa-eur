@@ -1560,6 +1560,14 @@ aro:
       urban central: air
   h2_turbine:
     technologies: []
+  methanol:
+    enable: false
+    fuel_price:
+    technologies:
+    - OCGT
+    - CCGT
+    reserve_only: false
+    reserve_inventory_carrying_rate: 0.07
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#overpass_api_cf
 overpass_api:
