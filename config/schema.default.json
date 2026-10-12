@@ -244,17 +244,10 @@
               "type": "boolean"
             },
             "fuel_price": {
-              "anyOf": [
-                {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "description": "Delivered renewable methanol price in EUR/MWh_LHV, required when enabled. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions."
+              "default": 130.0,
+              "description": "Delivered renewable methanol price in EUR/MWh_LHV. Default 130 is a literature-informed 2050 study assumption, not an exact inflation-adjusted IRENA estimate; monetary-year harmonisation remains open. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions.",
+              "minimum": 0,
+              "type": "number"
             },
             "technologies": {
               "description": "Competing methanol turbines; reuse the processed gas-turbine efficiency, capital_cost and VOM, excluding fossil gas fuel costs.",
@@ -387,17 +380,10 @@
           "type": "boolean"
         },
         "fuel_price": {
-          "anyOf": [
-            {
-              "minimum": 0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Delivered renewable methanol price in EUR/MWh_LHV, required when enabled. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions."
+          "default": 130.0,
+          "description": "Delivered renewable methanol price in EUR/MWh_LHV. Default 130 is a literature-informed 2050 study assumption, not an exact inflation-adjusted IRENA estimate; monetary-year harmonisation remains open. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions.",
+          "minimum": 0,
+          "type": "number"
         },
         "technologies": {
           "description": "Competing methanol turbines; reuse the processed gas-turbine efficiency, capital_cost and VOM, excluding fossil gas fuel costs.",
@@ -14669,17 +14655,10 @@
               "type": "boolean"
             },
             "fuel_price": {
-              "anyOf": [
-                {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "description": "Delivered renewable methanol price in EUR/MWh_LHV, required when enabled. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions."
+              "default": 130.0,
+              "description": "Delivered renewable methanol price in EUR/MWh_LHV. Default 130 is a literature-informed 2050 study assumption, not an exact inflation-adjusted IRENA estimate; monetary-year harmonisation remains open. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions.",
+              "minimum": 0,
+              "type": "number"
             },
             "technologies": {
               "description": "Competing methanol turbines; reuse the processed gas-turbine efficiency, capital_cost and VOM, excluding fossil gas fuel costs.",

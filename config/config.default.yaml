@@ -1562,7 +1562,7 @@ aro:
     technologies: []
   methanol:
     enable: false
-    fuel_price:
+    fuel_price: 130.0
     technologies:
     - OCGT
     - CCGT

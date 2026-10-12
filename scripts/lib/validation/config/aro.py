@@ -91,11 +91,11 @@ class AroMethanolConfig(ConfigModel, extra="forbid"):
         False,
         description="Add purchased CO2-neutral methanol at each AC node; no endogenous synthesis or carbon capture.",
     )
-    fuel_price: float | None = Field(
-        None,
+    fuel_price: float = Field(
+        130.0,
         ge=0,
         allow_inf_nan=False,
-        description="Delivered renewable methanol price in EUR/MWh_LHV, required when enabled. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions.",
+        description="Delivered renewable methanol price in EUR/MWh_LHV. Default 130 is a literature-informed 2050 study assumption, not an exact inflation-adjusted IRENA estimate; monetary-year harmonisation remains open. IRENA 2021 quotes USD/t: divide by 19.9/3.6 MWh/t and explicitly convert currency/cost year. Neutrality is an external fuel-sourcing assumption, not zero stack emissions.",
     )
     technologies: list[Literal["OCGT", "CCGT"]] = Field(
         default_factory=lambda: ["OCGT", "CCGT"],
@@ -116,11 +116,7 @@ class AroMethanolConfig(ConfigModel, extra="forbid"):
 
     @model_validator(mode="after")
     def check_methanol(self):
-        """Do not silently assign a fuel price or duplicate turbine components."""
-        if self.enable and self.fuel_price is None:
-            raise ValueError(
-                "aro.methanol.fuel_price is required when methanol is enabled"
-            )
+        """Reject duplicate turbine components."""
         if len(set(self.technologies)) != len(self.technologies):
             raise ValueError("aro.methanol.technologies must not contain duplicates")
         return self

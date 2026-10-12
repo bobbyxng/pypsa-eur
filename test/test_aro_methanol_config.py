@@ -13,7 +13,7 @@ from scripts.lib.validation.config.aro import AroMethanolConfig
 @pytest.mark.parametrize(
     "options",
     [
-        {"enable": True},
+        {"fuel_price": None},
         {"fuel_price": -1},
         {"fuel_price": float("nan")},
         {"reserve_inventory_carrying_rate": -0.1},
@@ -26,18 +26,20 @@ from scripts.lib.validation.config.aro import AroMethanolConfig
     ],
 )
 def test_invalid_config_is_rejected(options):
-    """Missing prices, invalid quantities and unsupported converters must fail."""
+    """Null prices, invalid quantities and unsupported converters must fail."""
     with pytest.raises(ValidationError):
         AroMethanolConfig.model_validate(options)
 
 
 def test_optional_and_explicit_price():
-    """Existing configs stay disabled; enabled configs require a deliberate price."""
+    """Configs stay disabled by default and use 130 unless explicitly overridden."""
     assert not AroMethanolConfig().enable
     assert not AroMethanolConfig().reserve_only
     assert AroMethanolConfig(
-        enable=True, fuel_price=100, reserve_only=True
+        enable=True, fuel_price=130, reserve_only=True
     ).reserve_only
-    cfg = AroMethanolConfig(enable=True, fuel_price=100)
+    cfg = AroMethanolConfig(enable=True)
     assert cfg.technologies == ["OCGT", "CCGT"]
-    assert cfg.fuel_price == 100
+    assert cfg.fuel_price == 130
+    assert AroMethanolConfig().fuel_price == 130
+    assert AroMethanolConfig(enable=True, fuel_price=160).fuel_price == 160
