@@ -58,6 +58,36 @@ rule calibrate_district_heating_potential:
         scripts("calibrate_district_heating_potential.py")
 
 
+# Same hand-copy pattern as the calibration above: reads a SOLVED sector-coupled network
+# (PyPSARO's europe-heat-reference run) and writes per-country heat-pump / resistive shares
+# for `aro.heat.shares`. Not read by any rule. memory: heat-electrification-design
+rule extract_electrified_heat_share:
+    input:
+        network=RESULTS + "networks/solved_{horizon}.nc",
+    output:
+        shares=RESULTS + "heat_shares/electrified_heat_shares_{horizon}.json",
+    log:
+        logs("extract_electrified_heat_share_{horizon}.log"),
+    threads: 1
+    resources:
+        mem_mb=8000,
+    message:
+        "Extracting heat-pump / resistive heat shares for {wildcards.horizon}"
+    script:
+        scripts("extract_electrified_heat_shares.py")
+
+
+rule extract_electrified_heat_shares:
+    input:
+        expand(
+            RESULTS + "heat_shares/electrified_heat_shares_{horizon}.json",
+            horizon=config["planning_horizons"],
+            run=config["run"]["name"],
+        ),
+    message:
+        "Collecting electrified heat shares"
+
+
 rule prepare_aro_network:
     input:
         network=resources("networks/composed_{horizon}.nc"),

@@ -144,6 +144,15 @@ anything non-trivial.
   `add_heat`'s own heat loads as ground truth. Keep the two files identical apart from
   `sector.enabled`, `run.name` and the `aro` block.
 
+- **`extract_electrified_heat_shares`** (`rules/aro.smk` +
+  `scripts/extract_electrified_heat_shares.py`) reads a *solved* sector-coupled network
+  (PyPSARO's `europe-heat-reference` run) and writes
+  `results/{run}/heat_shares/electrified_heat_shares_{horizon}.json`: per-country
+  heat-pump / resistive shares of building heat supply, to be copied by hand into
+  `aro.heat.shares` (same hand-copy pattern as `calibrate_district_heating_potential`). Not
+  read by any rule. Anchor: on the old europe-pre-run network it reproduces DE 0.845/0.040 and
+  ES 0.946/0.054. Unit tests: `test/test_extract_electrified_heat_shares.py`.
+
 - **Memory floor.** Every rule that upstream gives an explicit `mem_mb` below 6000 is raised to
   6000 here (and the `nprocesses * N` expressions are wrapped in `max(..., 6000)`), for
   compatibility with the apptainer container. A handful are raised further on measured need
