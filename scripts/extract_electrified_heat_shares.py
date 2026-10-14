@@ -154,9 +154,11 @@ def contamination_warnings(n: pypsa.Network, table: dict) -> list[str]:
         ct: b["combustion"] for ct, b in table.items() if b.get("combustion", 0) > 0.05
     }
     if combustion:
+        # Expected when biomass is on (biomass/biogas boilers and CHP); a red flag only if the
+        # run was meant to be all-electric. Reported, not judged.
         warnings.append(
-            "Non-electric (boiler/CHP) heat supply remains, so shares sum below 1 -- "
-            f"expected only if the run allows offsets: {combustion} TWh."
+            "Non-electric (boiler/CHP) heat supply present, so shares sum below 1; use "
+            f"heat_pump_fraction_of_electric for the electric split: {combustion} TWh."
         )
     return warnings
 
