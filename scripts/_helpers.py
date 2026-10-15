@@ -196,7 +196,7 @@ def get_rdir(run):
     return RDIR
 
 
-def get_run_path(fn, dir, rdir, shared_resources, exclude_from_shared):
+def get_run_path(fn, dir, rdir, shared_resources, exclude_from_shared, shared_dir=""):
     """
     Dynamically provide paths based on shared resources and filename.
 
@@ -218,6 +218,11 @@ def get_run_path(fn, dir, rdir, shared_resources, exclude_from_shared):
         - If boolean, directly specifies if the resource is shared.
     exclude_from_shared: list
         List of filenames to exclude from shared resources. Only relevant if shared_resources is "base".
+    shared_dir : str
+        Relative directory for shared resources, "" (the top level of `dir`) by default. The
+        Snakefile passes `{run.prefix}/`, so shared resources stay inside their prefix (fork
+        change: upstream shares them across every prefix, so two configs with different
+        clustering would overwrite each other's shared `networks/clustered.nc`).
 
     Returns
     -------
@@ -258,11 +263,11 @@ def get_run_path(fn, dir, rdir, shared_resources, exclude_from_shared):
         )
         if any(prefix in fn for prefix in shared_files) or is_shared:
             is_shared = True
-        rdir = "" if is_shared else rdir
+        rdir = shared_dir if is_shared else rdir
     elif isinstance(shared_resources, str):
         rdir = shared_resources + "/"
     elif isinstance(shared_resources, bool):
-        rdir = "" if shared_resources else rdir
+        rdir = shared_dir if shared_resources else rdir
     else:
         raise ValueError(
             "shared_resources must be a boolean, str, or 'base' for special handling."
@@ -271,7 +276,7 @@ def get_run_path(fn, dir, rdir, shared_resources, exclude_from_shared):
     return f"{dir}{rdir}{fn}"
 
 
-def path_provider(dir, rdir, shared_resources, exclude_from_shared):
+def path_provider(dir, rdir, shared_resources, exclude_from_shared, shared_dir=""):
     """
     Returns a partial function that dynamically provides paths based on shared
     resources and the filename.
@@ -288,6 +293,7 @@ def path_provider(dir, rdir, shared_resources, exclude_from_shared):
         rdir=rdir,
         shared_resources=shared_resources,
         exclude_from_shared=exclude_from_shared,
+        shared_dir=shared_dir,
     )
 
 

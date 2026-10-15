@@ -52,11 +52,15 @@ shadow_config = get_shadow(run)
 
 shared_resources = run["shared_resources"]["policy"]
 exclude_from_shared = run["shared_resources"]["exclude"]
-logs = path_provider("logs/", RDIR, shared_resources, exclude_from_shared)
+# Fork change: shared resources live under the run prefix, not across all prefixes.
+SHARED_DIR = f"{run['prefix']}/" if run.get("prefix") else ""
+logs = path_provider("logs/", RDIR, shared_resources, exclude_from_shared, SHARED_DIR)
 _benchmark_provider = path_provider(
-    "benchmarks/", RDIR, shared_resources, exclude_from_shared
+    "benchmarks/", RDIR, shared_resources, exclude_from_shared, SHARED_DIR
 )
-resources = path_provider("resources/", RDIR, shared_resources, exclude_from_shared)
+resources = path_provider(
+    "resources/", RDIR, shared_resources, exclude_from_shared, SHARED_DIR
+)
 scripts = script_path_provider(PROJ_DIR)
 
 

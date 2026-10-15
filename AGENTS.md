@@ -166,6 +166,15 @@ anything non-trivial.
   `test/test_prepare_aro_network_endogenous.py` against the `config.prepare_aro_endogenous.yaml`
   build and the sector twin; `test/test_aro_methanol_chp.py` for the methanol CHP.
 
+- **Shared resources stay inside the run prefix** (`Snakefile` `SHARED_DIR`, `shared_dir` in
+  `scripts/_helpers.py` `get_run_path`): with `run.shared_resources.policy: base` (or `true`)
+  upstream writes shared files to the top level of `resources/`, shared across EVERY prefix,
+  so two configs with different clustering silently overwrite each other's
+  `networks/clustered.nc`. Here they go to `resources/{prefix}/`. No prefix -> upstream
+  behaviour. `base` also needs `exclude: ["costs_"]` (compose_network asks for the shared
+  cost path, process_cost_data writes the per-run one). Test:
+  `test/test_shared_resources_prefix.py`.
+
 - **Memory floor.** Every rule that upstream gives an explicit `mem_mb` below 6000 is raised to
   6000 here (and the `nprocesses * N` expressions are wrapped in `max(..., 6000)`), for
   compatibility with the apptainer container. A handful are raised further on measured need
