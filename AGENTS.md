@@ -153,6 +153,16 @@ anything non-trivial.
   read by any rule. Anchor: on the old europe-pre-run network it reproduces DE 0.845/0.040 and
   ES 0.946/0.054. Unit tests: `test/test_extract_electrified_heat_shares.py`.
 
+- **Endogenous heat** (`aro.heat.mode: endogenous`, `add_endogenous_heat` in
+  `scripts/prepare_aro_network.py`): instead of fixed electric Loads, two heat systems per node
+  -- `decentral` (pypsa-eur's rural + urban decentral merged) and `urban central` -- with heat
+  Loads served by air heat pumps, resistive heaters, water tanks and heat vents, plus an
+  `urban central H2 CHP` priced from `"central gas CHP"`. Wiring, cost keys and TES
+  convention mirror `add_heat`; the demand split is shared with the exogenous mode through
+  `heat_system_inputs`, so both modes serve identical heat. Tests:
+  `test/test_prepare_aro_network_endogenous.py` against the `config.prepare_aro_endogenous.yaml`
+  build and the sector twin.
+
 - **Memory floor.** Every rule that upstream gives an explicit `mem_mb` below 6000 is raised to
   6000 here (and the `nprocesses * N` expressions are wrapped in `max(..., 6000)`), for
   compatibility with the apptainer container. A handful are raised further on measured need

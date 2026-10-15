@@ -7,8 +7,12 @@ Prepare an electricity-only network for the ARO/C&CG workflow.
 
 Independent layers, fork-specific additions to upstream PyPSA-Eur:
 
-1. an exogenous electrified-heat load, added as Loads on the existing AC buses
-   (`aro.heat.enable`, described below);
+1. building heat (`aro.heat.enable`), in one of two modes (`aro.heat.mode`):
+   - `exogenous` (default): fixed heat-pump/resistive electricity Loads on the existing AC
+     buses, split by country shares (described below);
+   - `endogenous`: heat buses (`decentral`, `urban central`) with heat Loads served by
+     optimised air heat pumps, resistive heaters, water tanks and, in district heating, an
+     H2 CHP -- mirroring `add_heat` (see `add_endogenous_heat`);
 2. the H2 cavern-vs-tank split that `attach_stores` omits on the electricity path
    (`cap_hydrogen_storage`, gated on `sector.hydrogen_underground_storage`);
 3. optional H2 turbines (`aro.h2_turbine.technologies`);
@@ -19,7 +23,8 @@ Independent layers, fork-specific additions to upstream PyPSA-Eur:
 Produces the network that PyPSARO's ARO/C&CG resilience workflow consumes, so that PyPSARO
 itself carries no content assumptions -- it only points `run.network` at this rule's output.
 
-Heat is added as *loads on the existing AC buses*, not as a modelled heat sector: no heat buses,
+In exogenous mode heat is added as *loads on the existing AC buses*, not as a modelled heat
+sector: no heat buses,
 no heat-pump Links, no thermal storage. That keeps the outage-disconnection paths and design
 transfer in PyPSARO untouched, at the cost of heat being inflexible during an outage (a
 deliberate, documented limitation -- see the parent repo's `memory/aro-study-limitations.md`).
@@ -178,19 +183,26 @@ def electric_heat_supply(
     return pd.concat(supply, axis=1)
 
 
-def add_heat_load(
+def heat_system_inputs(
     n: pypsa.Network,
     heat_demand: pd.DataFrame,
     cop_profiles_file: str,
     district_heat_share_file: str,
     pop_layout: pd.DataFrame,
-    costs: pd.DataFrame,
-    params: dict,
+    heat_pump_sources: dict,
     sector_params: dict,
     temporal: dict,
     investment_year: int,
-) -> None:
-    """Convert heat demand into electricity loads on the AC buses, per heat system."""
+) -> list[tuple[HeatSystem, pd.DataFrame, pd.DataFrame]]:
+    """
+    Heat demand and heat-pump 1/COP per `HeatSystem`, both at the network's resolution.
+
+    Shared by the exogenous (`add_heat_load`) and endogenous (`add_endogenous_heat`) heat
+    variants, so both read the identical demand split: same space reduction, same
+    district-heating weighting and losses, same COP curve and aggregation order. Returns one
+    `(heat_system, demand, inv_cop)` per system with nodes; `demand` and `inv_cop` are
+    time x node frames over the same nodes.
+    """
     from scripts._helpers import get
 
     cop = xr.open_dataset(cop_profiles_file)
@@ -224,33 +236,7 @@ def add_heat_load(
     dist_fraction = district_heat_info["district fraction of node"]
     urban_fraction = district_heat_info["urban fraction"]
 
-    sources = params["heat_pump_sources"]
-    # The column is float64 on disk, so this cast is a runtime no-op; it exists so the
-    # per-system lookup below yields a float rather than pandas' broad `Scalar` union.
-    efficiencies = costs["efficiency"].astype(float)
-
-    # A `shares` key that matches no country here is silently ignored by the lookup below, so
-    # a typo ("de", "DEU") would quietly leave that country on `default_shares` and produce
-    # subtly wrong loads with no signal. Warn rather than raise: listing countries this run
-    # does not cover is legitimate (one shared config driving per-country scenario runs).
-    unknown = sorted(set(params["shares"]) - set(pop_layout["ct"].unique()))
-    if unknown:
-        logger.warning(
-            f"aro.heat.shares lists {unknown}, which match no country in this network "
-            f"({sorted(pop_layout['ct'].unique())}). Those entries are ignored. If a country "
-            "was meant to be covered, check the code's spelling and case (ISO-2, upper-case); "
-            "otherwise it is simply not part of this run and will use default_shares."
-        )
-
-    # Accumulate per heat system ("rural" / "urban decentral" / "urban central"), for BOTH
-    # technologies. That split is an exogenous assumption -- demand is allocated across the three
-    # systems by urban_fraction and dist_fraction (the latter driven by
-    # sector.district_heating.potential), never chosen by an optimiser -- so it is exactly the
-    # axis someone will want to interrogate. Keeping both technologies decomposable along it lets
-    # a district-heating sensitivity be read off the network directly.
-    heat_pump_load: dict[str, pd.DataFrame] = {}
-    resistive_load: dict[str, pd.DataFrame] = {}
-
+    systems = []
     for heat_system in HeatSystem:
         if heat_system == HeatSystem.URBAN_CENTRAL:
             nodes = dist_fraction.index[dist_fraction > 0]
@@ -278,7 +264,7 @@ def add_heat_load(
         demand = demand.multiply(factor)
 
         group = cop_heat_system(heat_system)
-        source = sources[group]
+        source = heat_pump_sources[group]
         # dims after .sel are (time, name), so to_pandas() is already time-indexed -- no transpose.
         curve = cop.sel(heat_system=group, heat_source=source).to_pandas()[nodes]
         # Not every (system, source) pair exists: pypsa-eur offers ground only for rural, so
@@ -305,6 +291,47 @@ def add_heat_load(
         # where upstream has the harmonic mean -- 2.2086 vs 2.2070 on the config this was
         # measured against.
         inv_cop = to_network_resolution(1.0 / curve, n.snapshots, temporal)
+        systems.append((heat_system, demand, inv_cop))
+    return systems
+
+
+def add_heat_load(
+    n: pypsa.Network,
+    systems: list[tuple[HeatSystem, pd.DataFrame, pd.DataFrame]],
+    pop_layout: pd.DataFrame,
+    costs: pd.DataFrame,
+    params: dict,
+) -> None:
+    """Convert heat demand into electricity loads on the AC buses, per heat system."""
+    # The column is float64 on disk, so this cast is a runtime no-op; it exists so the
+    # per-system lookup below yields a float rather than pandas' broad `Scalar` union.
+    efficiencies = costs["efficiency"].astype(float)
+
+    # A `shares` key that matches no country here is silently ignored by the lookup below, so
+    # a typo ("de", "DEU") would quietly leave that country on `default_shares` and produce
+    # subtly wrong loads with no signal. Warn rather than raise: listing countries this run
+    # does not cover is legitimate (one shared config driving per-country scenario runs).
+    unknown = sorted(set(params["shares"]) - set(pop_layout["ct"].unique()))
+    if unknown:
+        logger.warning(
+            f"aro.heat.shares lists {unknown}, which match no country in this network "
+            f"({sorted(pop_layout['ct'].unique())}). Those entries are ignored. If a country "
+            "was meant to be covered, check the code's spelling and case (ISO-2, upper-case); "
+            "otherwise it is simply not part of this run and will use default_shares."
+        )
+
+    # Accumulate per heat system ("rural" / "urban decentral" / "urban central"), for BOTH
+    # technologies. That split is an exogenous assumption -- demand is allocated across the three
+    # systems by urban_fraction and dist_fraction (the latter driven by
+    # sector.district_heating.potential), never chosen by an optimiser -- so it is exactly the
+    # axis someone will want to interrogate. Keeping both technologies decomposable along it lets
+    # a district-heating sensitivity be read off the network directly.
+    heat_pump_load: dict[str, pd.DataFrame] = {}
+    resistive_load: dict[str, pd.DataFrame] = {}
+
+    for heat_system, demand, inv_cop in systems:
+        group = cop_heat_system(heat_system)
+        nodes = demand.columns
 
         # `ct` is itself just `pop.index.str[:2]` (build_clustered_population_layouts), so this
         # is not a more correct derivation than slicing here -- it routes through the interface
@@ -336,6 +363,275 @@ def add_heat_load(
         for group, load in loads.items():
             carrier = template.format(heat_system=group)
             _add_loads(n, load, carrier, f" {carrier}")
+
+
+# Endogenous heat: two systems only. `decentral` merges pypsa-eur's `rural` and
+# `urban decentral` (both individual heating); `urban central` keeps pypsa-eur's name. Cost keys
+# are pypsa-eur's `decentral ...` / `central ...` rows either way.
+DECENTRAL = "decentral"
+CENTRAL = "urban central"
+AIR_SOURCES = {"rural": "air", "urban decentral": "air", "urban central": "air"}
+# H2-ready engine/turbine CHP for district heating, priced with the gas CHP row: pypsa-eur has
+# no H2 CHP, and its unused "central hydrogen CHP" row is a copy of the fuel cell.
+H2_CHP_PROXY = "central gas CHP"
+ENDOGENOUS_COLORS = {
+    "decentral heat": "#cc1f1f",
+    "decentral air heat pump": "#7bccc4",
+    "decentral resistive heater": "#fc8d59",
+    # Charger and discharger get distinct shades: both show up in the heat balance, one as a
+    # withdrawal and one as a supply, and a shared colour made them indistinguishable.
+    "decentral water tanks": "#e69487",
+    "decentral water tanks charger": "#f4c7bf",
+    "decentral water tanks discharger": "#c0574a",
+    "decentral heat vent": "#aaaaaa",
+    "urban central heat": "#9d0208",
+    "urban central air heat pump": "#084081",
+    "urban central resistive heater": "#d7301f",
+    "urban central water tanks": "#f7b7a3",
+    "urban central water tanks charger": "#fde0d6",
+    "urban central water tanks discharger": "#b5523b",
+    "urban central heat vent": "#aaaaaa",
+    "urban central H2 CHP": "#d9b8d3",
+}
+
+
+def merge_heat_systems(
+    systems: list[tuple[HeatSystem, pd.DataFrame, pd.DataFrame]],
+) -> dict[str, tuple[pd.DataFrame, pd.DataFrame, str]]:
+    """
+    Collapse pypsa-eur's five heat systems into `decentral` and `urban central`.
+
+    Demand is summed. The merged 1/COP is the heat-weighted mean of the members' curves, which
+    keeps the heat-pump electricity exact if every member's heat went through one heat pump;
+    pypsa-eur's rural and urban-decentral air curves are identical anyway, so in practice it
+    is just that curve. Returns `{system: (demand, inv_cop, "central"|"decentral")}`.
+    """
+    grouped: dict[str, list] = {}
+    for heat_system, demand, inv_cop in systems:
+        key = CENTRAL if heat_system == HeatSystem.URBAN_CENTRAL else DECENTRAL
+        grouped.setdefault(key, []).append((demand, inv_cop))
+
+    merged = {}
+    for key, members in grouped.items():
+        nodes = members[0][0].columns
+        for demand, _ in members[1:]:
+            nodes = nodes.union(demand.columns)
+        demand = sum(d.reindex(columns=nodes, fill_value=0.0) for d, _ in members)
+        weighted = sum(
+            (d * c).reindex(columns=nodes, fill_value=0.0) for d, c in members
+        )
+        plain = sum(c.reindex(columns=nodes) for _, c in members) / len(members)
+        # Where a node has no heat in a snapshot the weights vanish; any member curve is then
+        # as good as another, and the plain mean keeps the Link efficiency well defined.
+        inv_cop = (weighted / demand).where(demand > 0, plain)
+        merged[key] = (demand, inv_cop, "central" if key == CENTRAL else "decentral")
+    return merged
+
+
+def add_endogenous_heat(
+    n: pypsa.Network,
+    systems: list[tuple[HeatSystem, pd.DataFrame, pd.DataFrame]],
+    costs: pd.DataFrame,
+    options: dict,
+    sector_params: dict,
+) -> None:
+    """
+    Model building heat endogenously: heat buses, loads and the technologies serving them.
+
+    Mirrors `prepare_sector_network.add_heat` (wiring, cost keys, overdimensioning, TES
+    convention) for a reduced technology set, so the investment and dispatch of heating are
+    decided by the optimiser instead of fixed shares:
+
+    - decentral: air heat pump, resistive heater, water tanks, heat vent;
+    - urban central: the same, plus an H2 CHP where the node has an H2 bus.
+
+    Only electricity and stored H2 can make heat -- no boilers, solar thermal, pits or
+    biomass -- matching the fully electrified heat world of the ARO network. Heat buses are
+    local, so a transmission outage never disconnects them; only the electricity feeding the
+    heat pumps and resistive heaters goes.
+    """
+    overdim = sector_params["overdimension_heat_generators"]
+    vent_cost = sector_params["marginal_cost_heat_vent"]
+    ac_nodes = n.buses.index[n.buses.carrier == "AC"]
+
+    for system, (demand, inv_cop, c_or_d) in merge_heat_systems(systems).items():
+        demand = demand.loc[:, demand.sum() > 0]
+        nodes = demand.columns
+        missing = nodes.difference(ac_nodes)
+        if len(missing):
+            raise ValueError(
+                f"Heat demand for '{system}' at nodes without an AC bus: {list(missing)}."
+            )
+        if nodes.empty:
+            continue
+        heat_bus = nodes + f" {system} heat"
+        tank_bus = nodes + f" {system} water tanks"
+        factor = overdim[c_or_d]
+
+        for carrier in [f"{system} heat", f"{system} water tanks"] + [
+            f"{system} {tech}"
+            for tech in (
+                "air heat pump",
+                "resistive heater",
+                "water tanks charger",
+                "water tanks discharger",
+                "heat vent",
+            )
+        ]:
+            if carrier not in n.carriers.index:
+                n.add(
+                    "Carrier",
+                    carrier,
+                    color=ENDOGENOUS_COLORS.get(carrier, "#999999"),
+                    nice_name=carrier,
+                )
+
+        n.add("Bus", heat_bus, location=nodes, carrier=f"{system} heat", unit="MWh_th")
+        n.add(
+            "Load",
+            heat_bus,
+            bus=heat_bus,
+            carrier=f"{system} heat",
+            p_set=demand.reindex(n.snapshots).fillna(0.0).set_axis(heat_bus, axis=1),
+        )
+
+        # Reversed wiring as upstream: bus0 is the heat bus and the link runs negative, so
+        # p_nom is heat output (MW_th) and |p1| = |p0| / COP is the electricity drawn.
+        # memory: pypsa-eur-sector-run-gotchas
+        hp_key = f"{c_or_d} air-sourced heat pump"
+        n.add(
+            "Link",
+            nodes + f" {system} air heat pump",
+            bus0=heat_bus,
+            bus1=nodes,
+            carrier=f"{system} air heat pump",
+            efficiency=inv_cop.reindex(n.snapshots)[nodes].set_axis(
+                nodes + f" {system} air heat pump", axis=1
+            ),
+            capital_cost=costs.at[hp_key, "capital_cost"] * factor,
+            p_min_pu=-1.0,
+            p_max_pu=0.0,
+            p_nom_extendable=True,
+            lifetime=costs.at[hp_key, "lifetime"],
+        )
+
+        res_key = f"{c_or_d} resistive heater"
+        n.add(
+            "Link",
+            nodes + f" {system} resistive heater",
+            bus0=nodes,
+            bus1=heat_bus,
+            carrier=f"{system} resistive heater",
+            efficiency=costs.at[res_key, "efficiency"],
+            capital_cost=costs.at[res_key, "efficiency"]
+            * costs.at[res_key, "capital_cost"]
+            * factor,
+            p_nom_extendable=True,
+            lifetime=costs.at[res_key, "lifetime"],
+        )
+
+        # Water tanks exactly as upstream: own bus, charger/discharger, cost on the Store, and
+        # the energy-to-power ratio on the charger, which PyPSARO's
+        # `add_tes_energy_to_power_constraints` enforces (and its charger/discharger pairing
+        # ties the two links) -- both match on these carrier names.
+        tank_key = f"{c_or_d} water tank storage"
+        n.add(
+            "Bus",
+            tank_bus,
+            location=nodes,
+            carrier=f"{system} water tanks",
+            unit="MWh_th",
+        )
+        n.add(
+            "Link",
+            nodes + f" {system} water tanks charger",
+            bus0=heat_bus,
+            bus1=tank_bus,
+            carrier=f"{system} water tanks charger",
+            efficiency=costs.at[f"{c_or_d} water tank charger", "efficiency"],
+            marginal_cost=costs.at["water tank charger", "marginal_cost"],
+            p_nom_extendable=True,
+            lifetime=costs.at[tank_key, "lifetime"],
+        )
+        n.add(
+            "Link",
+            nodes + f" {system} water tanks discharger",
+            bus0=tank_bus,
+            bus1=heat_bus,
+            carrier=f"{system} water tanks discharger",
+            efficiency=costs.at[f"{c_or_d} water tank discharger", "efficiency"],
+            p_nom_extendable=True,
+            lifetime=costs.at[tank_key, "lifetime"],
+        )
+        n.links.loc[
+            nodes + f" {system} water tanks charger", "energy to power ratio"
+        ] = costs.at[tank_key, "energy to power ratio"]
+        n.add(
+            "Store",
+            tank_bus,
+            bus=tank_bus,
+            carrier=f"{system} water tanks",
+            e_cyclic=True,
+            e_nom_extendable=True,
+            # %/hour in the cost table, a per-unit hourly loss on the Store.
+            standing_loss=costs.at[tank_key, "standing_losses"] / 100,
+            capital_cost=costs.at[tank_key, "capital_cost"],
+            lifetime=costs.at[tank_key, "lifetime"],
+        )
+
+        # Dumps surplus heat (full tanks, CHP heat beyond demand) at a small cost, as upstream;
+        # without it a must-run CHP heat output could make the outage dispatch infeasible.
+        n.add(
+            "Generator",
+            nodes + f" {system} heat vent",
+            bus=heat_bus,
+            carrier=f"{system} heat vent",
+            p_nom_extendable=True,
+            p_max_pu=0.0,
+            p_min_pu=-1.0,
+            marginal_cost=-vent_cost,
+        )
+
+        if system == CENTRAL and options.get("h2_chp", True):
+            _add_h2_chp(n, nodes, costs)
+
+        weight = n.snapshot_weightings.objective.iloc[0]
+        logger.info(
+            f"Endogenous {system} heat: {len(nodes)} nodes, "
+            f"{demand.sum().sum() * weight / 1e6:.1f} TWh_th/a."
+        )
+
+
+def _add_h2_chp(n: pypsa.Network, nodes: pd.Index, costs: pd.DataFrame) -> None:
+    """H2 CHP (H2 -> electricity + district heat) at central nodes that have an H2 bus."""
+    h2_buses = n.buses[n.buses.carrier == H2_CARRIER]
+    h2_of = pd.Series(h2_buses.index, index=h2_buses["location"])
+    chp_nodes = nodes.intersection(h2_of.index)
+    if chp_nodes.empty:
+        logger.warning(
+            "aro.heat.endogenous.h2_chp: no urban-central node has an H2 bus."
+        )
+        return
+    carrier = f"{CENTRAL} H2 CHP"
+    if carrier not in n.carriers.index:
+        n.add("Carrier", carrier, color=ENDOGENOUS_COLORS[carrier], nice_name=carrier)
+    eff = costs.at[H2_CHP_PROXY, "efficiency"]
+    # Upstream's gas-CHP convention: costs per MW_el, converted to the fuel-input p_nom by the
+    # electric efficiency; heat output fixed at eff / c_b (back-pressure, no c_v envelope).
+    n.add(
+        "Link",
+        chp_nodes + f" {carrier}",
+        bus0=h2_of.loc[chp_nodes].values,
+        bus1=chp_nodes,
+        bus2=chp_nodes + f" {CENTRAL} heat",
+        carrier=carrier,
+        p_nom_extendable=True,
+        capital_cost=costs.at[H2_CHP_PROXY, "capital_cost"] * eff,
+        marginal_cost=costs.at[H2_CHP_PROXY, "VOM"] * eff,
+        efficiency=eff,
+        efficiency2=eff / costs.at[H2_CHP_PROXY, "c_b"],
+        lifetime=costs.at[H2_CHP_PROXY, "lifetime"],
+    )
 
 
 def _add_loads(n: pypsa.Network, load: pd.DataFrame, carrier: str, suffix: str) -> None:
@@ -814,17 +1110,28 @@ if __name__ == "__main__":
             f"{subtracted / 1e6:.1f} TWh/a."
         )
 
-        add_heat_load(
+        endogenous = params["mode"] == "endogenous"
+        systems = heat_system_inputs(
             n,
             heat_demand,
             snakemake.input.cop_profiles,
             snakemake.input.district_heat_share,
             pop_layout,
-            costs,
-            params,
+            # Endogenous heat offers air-source heat pumps only (no ground source).
+            AIR_SOURCES if endogenous else params["heat_pump_sources"],
             snakemake.params.sector,
             temporal,
             int(snakemake.wildcards.horizon),
         )
+        if endogenous:
+            add_endogenous_heat(
+                n,
+                systems,
+                costs,
+                params["endogenous"],
+                snakemake.params.sector,
+            )
+        else:
+            add_heat_load(n, systems, pop_layout, costs, params)
 
         n.export_to_netcdf(snakemake.output.network)

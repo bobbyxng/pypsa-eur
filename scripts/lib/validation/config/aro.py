@@ -48,12 +48,29 @@ class AroHeatSharesConfig(ConfigModel):
         return self
 
 
+class AroHeatEndogenousConfig(ConfigModel):
+    """Configuration for `aro.heat.endogenous` settings (used only with `mode: endogenous`)."""
+
+    h2_chp: bool = Field(
+        True,
+        description="Offer an H2 CHP (H2 -> electricity + district heat) at urban-central nodes that have an H2 bus. Priced with pypsa-eur's 'central gas CHP' row as an H2-ready engine/turbine proxy; pypsa-eur has no H2 CHP of its own.",
+    )
+
+
 class AroHeatConfig(ConfigModel):
     """Configuration for `aro.heat` settings."""
 
     enable: bool = Field(
         False,
-        description="Add the exogenous heat-pump/resistive electricity load to the network. Off by default so existing electricity-only runs are unchanged; the no-heat baseline is just this flag set to false.",
+        description="Add building heat to the network. Off by default so existing electricity-only runs are unchanged; the no-heat baseline is just this flag set to false.",
+    )
+    mode: Literal["exogenous", "endogenous"] = Field(
+        "exogenous",
+        description="'exogenous': heat as fixed heat-pump/resistive electricity Loads on the AC buses, split by `shares`. 'endogenous': heat buses ('decentral', 'urban central') with heat Loads served by optimised air heat pumps, resistive heaters, water tanks (and an H2 CHP in district heating), mirroring pypsa-eur's add_heat; `shares` and `heat_pump_sources` are then ignored.",
+    )
+    endogenous: AroHeatEndogenousConfig = Field(
+        default_factory=AroHeatEndogenousConfig,
+        description="Options for `mode: endogenous`.",
     )
     shares: dict[str, AroHeatSharesConfig] = Field(
         default_factory=dict,

@@ -164,8 +164,27 @@
           "properties": {
             "enable": {
               "default": false,
-              "description": "Add the exogenous heat-pump/resistive electricity load to the network. Off by default so existing electricity-only runs are unchanged; the no-heat baseline is just this flag set to false.",
+              "description": "Add building heat to the network. Off by default so existing electricity-only runs are unchanged; the no-heat baseline is just this flag set to false.",
               "type": "boolean"
+            },
+            "mode": {
+              "default": "exogenous",
+              "description": "'exogenous': heat as fixed heat-pump/resistive electricity Loads on the AC buses, split by `shares`. 'endogenous': heat buses ('decentral', 'urban central') with heat Loads served by optimised air heat pumps, resistive heaters, water tanks (and an H2 CHP in district heating), mirroring pypsa-eur's add_heat; `shares` and `heat_pump_sources` are then ignored.",
+              "enum": [
+                "exogenous",
+                "endogenous"
+              ],
+              "type": "string"
+            },
+            "endogenous": {
+              "description": "Configuration for `aro.heat.endogenous` settings (used only with `mode: endogenous`).",
+              "properties": {
+                "h2_chp": {
+                  "default": true,
+                  "description": "Offer an H2 CHP (H2 -> electricity + district heat) at urban-central nodes that have an H2 bus. Priced with pypsa-eur's 'central gas CHP' row as an H2-ready engine/turbine proxy; pypsa-eur has no H2 CHP of its own.",
+                  "type": "boolean"
+                }
+              }
             },
             "shares": {
               "additionalProperties": {
@@ -293,8 +312,27 @@
       "properties": {
         "enable": {
           "default": false,
-          "description": "Add the exogenous heat-pump/resistive electricity load to the network. Off by default so existing electricity-only runs are unchanged; the no-heat baseline is just this flag set to false.",
+          "description": "Add building heat to the network. Off by default so existing electricity-only runs are unchanged; the no-heat baseline is just this flag set to false.",
           "type": "boolean"
+        },
+        "mode": {
+          "default": "exogenous",
+          "description": "'exogenous': heat as fixed heat-pump/resistive electricity Loads on the AC buses, split by `shares`. 'endogenous': heat buses ('decentral', 'urban central') with heat Loads served by optimised air heat pumps, resistive heaters, water tanks (and an H2 CHP in district heating), mirroring pypsa-eur's add_heat; `shares` and `heat_pump_sources` are then ignored.",
+          "enum": [
+            "exogenous",
+            "endogenous"
+          ],
+          "type": "string"
+        },
+        "endogenous": {
+          "description": "Configuration for `aro.heat.endogenous` settings (used only with `mode: endogenous`).",
+          "properties": {
+            "h2_chp": {
+              "default": true,
+              "description": "Offer an H2 CHP (H2 -> electricity + district heat) at urban-central nodes that have an H2 bus. Priced with pypsa-eur's 'central gas CHP' row as an H2-ready engine/turbine proxy; pypsa-eur has no H2 CHP of its own.",
+              "type": "boolean"
+            }
+          }
         },
         "shares": {
           "additionalProperties": {
@@ -348,6 +386,16 @@
           },
           "description": "Heat-pump source per heat system, selecting which COP curve from `cop_profiles` applies. Keys must match the `heat_system` coordinate of the COP file.",
           "type": "object"
+        }
+      }
+    },
+    "AroHeatEndogenousConfig": {
+      "description": "Configuration for `aro.heat.endogenous` settings (used only with `mode: endogenous`).",
+      "properties": {
+        "h2_chp": {
+          "default": true,
+          "description": "Offer an H2 CHP (H2 -> electricity + district heat) at urban-central nodes that have an H2 bus. Priced with pypsa-eur's 'central gas CHP' row as an H2-ready engine/turbine proxy; pypsa-eur has no H2 CHP of its own.",
+          "type": "boolean"
         }
       }
     },
@@ -14575,8 +14623,27 @@
           "properties": {
             "enable": {
               "default": false,
-              "description": "Add the exogenous heat-pump/resistive electricity load to the network. Off by default so existing electricity-only runs are unchanged; the no-heat baseline is just this flag set to false.",
+              "description": "Add building heat to the network. Off by default so existing electricity-only runs are unchanged; the no-heat baseline is just this flag set to false.",
               "type": "boolean"
+            },
+            "mode": {
+              "default": "exogenous",
+              "description": "'exogenous': heat as fixed heat-pump/resistive electricity Loads on the AC buses, split by `shares`. 'endogenous': heat buses ('decentral', 'urban central') with heat Loads served by optimised air heat pumps, resistive heaters, water tanks (and an H2 CHP in district heating), mirroring pypsa-eur's add_heat; `shares` and `heat_pump_sources` are then ignored.",
+              "enum": [
+                "exogenous",
+                "endogenous"
+              ],
+              "type": "string"
+            },
+            "endogenous": {
+              "description": "Configuration for `aro.heat.endogenous` settings (used only with `mode: endogenous`).",
+              "properties": {
+                "h2_chp": {
+                  "default": true,
+                  "description": "Offer an H2 CHP (H2 -> electricity + district heat) at urban-central nodes that have an H2 bus. Priced with pypsa-eur's 'central gas CHP' row as an H2-ready engine/turbine proxy; pypsa-eur has no H2 CHP of its own.",
+                  "type": "boolean"
+                }
+              }
             },
             "shares": {
               "additionalProperties": {

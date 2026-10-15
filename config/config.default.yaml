@@ -1550,6 +1550,9 @@ data:
 aro:
   heat:
     enable: false
+    mode: exogenous
+    endogenous:
+      h2_chp: true
     shares: {}
     default_shares:
       heat_pump: 0.9
