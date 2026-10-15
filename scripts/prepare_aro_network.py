@@ -392,6 +392,8 @@ ENDOGENOUS_COLORS = {
     "urban central water tanks discharger": "#b5523b",
     "urban central heat vent": "#aaaaaa",
     "urban central H2 CHP": "#d9b8d3",
+    # Glaum's min-MeOH-economy colour for the same carrier.
+    "urban central methanol CHP": "#A17666",
 }
 
 
@@ -434,6 +436,7 @@ def add_endogenous_heat(
     costs: pd.DataFrame,
     options: dict,
     sector_params: dict,
+    methanol: dict | None = None,
 ) -> None:
     """
     Model building heat endogenously: heat buses, loads and the technologies serving them.
@@ -443,7 +446,8 @@ def add_endogenous_heat(
     decided by the optimiser instead of fixed shares:
 
     - decentral: air heat pump, resistive heater, water tanks, heat vent;
-    - urban central: the same, plus an H2 CHP where the node has an H2 bus.
+    - urban central: the same, plus an H2 CHP where the node has an H2 bus, and a methanol
+      CHP where `aro.methanol` added a local methanol bus (`_add_methanol_chp`).
 
     Only electricity and stored H2 can make heat -- no boilers, solar thermal, pits or
     biomass -- matching the fully electrified heat world of the ARO network. Heat buses are
@@ -594,6 +598,8 @@ def add_endogenous_heat(
 
         if system == CENTRAL and options.get("h2_chp", True):
             _add_h2_chp(n, nodes, costs)
+        if system == CENTRAL and options.get("methanol_chp", True):
+            _add_methanol_chp(n, nodes, costs, methanol or {})
 
         weight = n.snapshot_weightings.objective.iloc[0]
         logger.info(
@@ -632,6 +638,67 @@ def _add_h2_chp(n: pypsa.Network, nodes: pd.Index, costs: pd.DataFrame) -> None:
         efficiency2=eff / costs.at[H2_CHP_PROXY, "c_b"],
         lifetime=costs.at[H2_CHP_PROXY, "lifetime"],
     )
+
+
+def _add_methanol_chp(
+    n: pypsa.Network, nodes: pd.Index, costs: pd.DataFrame, methanol: dict
+) -> None:
+    """
+    Methanol CHP (methanol -> electricity + district heat) at central nodes with a methanol bus.
+
+    A third consumer of the SAME local tank as the methanol OCGT/CCGT of `add_methanol`, with
+    the same access rule: under `aro.methanol.reserve_only` it is blocked in normal operation
+    (`p_max_pu = 0`), tagged `reserve_only` so PyPSARO opens it only inside the outage window,
+    and its fuel is priced at replacement cost like the turbines'. PyPSARO's fuel-inventory
+    constraint counts every link leaving the methanol bus as a consumer, so no engine change.
+
+    Technology data as Glaum et al.'s min-MeOH-economy (`urban central methanol CHP`): the
+    `central gas CHP` row for every non-biomass CHP fuel. One deliberate difference: Glaum's
+    marginal cost carries no CHP VOM (fuel VOM + distribution only); this keeps upstream
+    pypsa-eur's gas-CHP convention, `VOM x efficiency` (VOM is per MWh_el), as the methanol
+    turbines here do. No CO2 port: the purchased methanol is externally CO2-neutral, as for the
+    turbines (memory: purchased-methanol-backstop); Glaum tracks its carbon instead.
+    """
+    if not methanol.get("enable", False):
+        return
+    fuel_buses = n.buses[n.buses.carrier == "methanol"]
+    fuel_of = pd.Series(fuel_buses.index, index=fuel_buses["location"])
+    chp_nodes = nodes.intersection(fuel_of.index)
+    if chp_nodes.empty:
+        logger.warning(
+            "aro.heat.endogenous.methanol_chp: no urban-central node has a methanol bus."
+        )
+        return
+    reserve_only = methanol.get("reserve_only", False)
+    fuel_price = methanol["fuel_price"]
+    carrier = f"{CENTRAL} methanol CHP"
+    if carrier not in n.carriers.index:
+        n.add(
+            "Carrier",
+            carrier,
+            co2_emissions=0,
+            color=ENDOGENOUS_COLORS[carrier],
+            nice_name=carrier,
+        )
+    eff = costs.at[H2_CHP_PROXY, "efficiency"]
+    names = chp_nodes + f" {carrier}"
+    n.add(
+        "Link",
+        names,
+        bus0=fuel_of.loc[chp_nodes].values,
+        bus1=chp_nodes,
+        bus2=chp_nodes + f" {CENTRAL} heat",
+        carrier=carrier,
+        p_nom_extendable=True,
+        p_max_pu=0.0 if reserve_only else 1.0,
+        capital_cost=costs.at[H2_CHP_PROXY, "capital_cost"] * eff,
+        marginal_cost=costs.at[H2_CHP_PROXY, "VOM"] * eff
+        + (fuel_price if reserve_only else 0.0),
+        efficiency=eff,
+        efficiency2=eff / costs.at[H2_CHP_PROXY, "c_b"],
+        lifetime=costs.at[H2_CHP_PROXY, "lifetime"],
+    )
+    n.links.loc[names, "reserve_only"] = float(reserve_only)
 
 
 def _add_loads(n: pypsa.Network, load: pd.DataFrame, carrier: str, suffix: str) -> None:
@@ -1130,6 +1197,7 @@ if __name__ == "__main__":
                 costs,
                 params["endogenous"],
                 snakemake.params.sector,
+                methanol=snakemake.params.aro_methanol,
             )
         else:
             add_heat_load(n, systems, pop_layout, costs, params)

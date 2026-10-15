@@ -157,11 +157,14 @@ anything non-trivial.
   `scripts/prepare_aro_network.py`): instead of fixed electric Loads, two heat systems per node
   -- `decentral` (pypsa-eur's rural + urban decentral merged) and `urban central` -- with heat
   Loads served by air heat pumps, resistive heaters, water tanks and heat vents, plus an
-  `urban central H2 CHP` priced from `"central gas CHP"`. Wiring, cost keys and TES
+  `urban central H2 CHP` priced from `"central gas CHP"`, and, when `aro.methanol` is on, an
+  `urban central methanol CHP` on the local methanol tank (`_add_methanol_chp`; same
+  `reserve_only` access and fuel pricing as the methanol turbines; techno-economics exactly
+  upstream's generic `urban central {fuel} CHP` minus its CO2 port). Wiring, cost keys and TES
   convention mirror `add_heat`; the demand split is shared with the exogenous mode through
   `heat_system_inputs`, so both modes serve identical heat. Tests:
   `test/test_prepare_aro_network_endogenous.py` against the `config.prepare_aro_endogenous.yaml`
-  build and the sector twin.
+  build and the sector twin; `test/test_aro_methanol_chp.py` for the methanol CHP.
 
 - **Memory floor.** Every rule that upstream gives an explicit `mem_mb` below 6000 is raised to
   6000 here (and the `nprocesses * N` expressions are wrapped in `max(..., 6000)`), for

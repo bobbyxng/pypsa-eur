@@ -55,6 +55,10 @@ class AroHeatEndogenousConfig(ConfigModel):
         True,
         description="Offer an H2 CHP (H2 -> electricity + district heat) at urban-central nodes that have an H2 bus. Priced with pypsa-eur's 'central gas CHP' row as an H2-ready engine/turbine proxy; pypsa-eur has no H2 CHP of its own.",
     )
+    methanol_chp: bool = Field(
+        True,
+        description="Offer a methanol CHP (methanol -> electricity + district heat) at urban-central nodes, drawing on the local methanol tank of `aro.methanol` with the same access rule as its turbines (backup-only under `reserve_only`). Inert unless `aro.methanol.enable`. 'central gas CHP' data, as Glaum et al.'s min-MeOH-economy.",
+    )
 
 
 class AroHeatConfig(ConfigModel):
