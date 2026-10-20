@@ -166,6 +166,18 @@ anything non-trivial.
   `test/test_prepare_aro_network_endogenous.py` against the `config.prepare_aro_endogenous.yaml`
   build and the sector twin; `test/test_aro_methanol_chp.py` for the methanol CHP.
 
+- **Fixed 2050 nuclear fleet** (`rules/aro.smk` `build_aro_nuclear_fleet` +
+  `scripts/build_aro_nuclear_fleet.py` → committed `data/aro_nuclear_fleet_2050.csv`): the
+  ARO runs' exogenous nuclear fleet, built from ppm unit by unit with the adopted rules
+  (E1-E3, N; parent `memory/nuclear-treatment.md`). New units one step short of confirmed
+  carry `Status == "pending"`. Consumed through a new `electricity.custom_powerplants_file`
+  option (default: upstream's `data/custom_powerplants.csv`, so nothing else changes); the
+  run must also drop ppm's nuclear rows via `powerplants_filter`, because custom rows are
+  appended, never substituted. The same rule writes `data/aro_nuclear_p_max_pu.csv`
+  (upstream's per-country availability plus a row for every fleet country without history,
+  i.e. PL: per-year median over the run's modelled countries, UA excluded; `add_electricity` would otherwise leave it at 1.0), used via
+  `conventional: nuclear: p_max_pu`. Tests: `test/test_build_aro_nuclear_fleet.py`.
+
 - **Shared resources stay inside the run prefix** (`Snakefile` `SHARED_DIR`, `shared_dir` in
   `scripts/_helpers.py` `get_run_path`): with `run.shared_resources.policy: base` (or `true`)
   upstream writes shared files to the top level of `resources/`, shared across EVERY prefix,

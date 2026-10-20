@@ -31,6 +31,33 @@ rule retrieve_fallahnejad_dh:
         scripts("retrieve_fallahnejad_dh.py")
 
 
+# The fixed 2050 nuclear fleet as a custom powerplant list (rules E1-E3/N in the script's
+# docstring). Writes into data/ and is committed, so the fleet is reviewable row by row and
+# frozen against later ppm releases. A run uses it via `electricity.custom_powerplants_file`
+# plus a `powerplants_filter` that drops ppm's own nuclear rows, and the availability table
+# via `conventional: nuclear: p_max_pu` (adds PL, which upstream's table lacks and would
+# leave at 1.0). memory: nuclear-treatment
+rule build_aro_nuclear_fleet:
+    input:
+        powerplants=rules.retrieve_powerplants.output["powerplants"],
+        p_max_pu="data/nuclear_p_max_pu.csv",
+    output:
+        fleet="data/aro_nuclear_fleet_2050.csv",
+        p_max_pu="data/aro_nuclear_p_max_pu.csv",
+    log:
+        "logs/build_aro_nuclear_fleet.log",
+    threads: 1
+    resources:
+        mem_mb=6000,
+    params:
+        # The availability median for countries without history runs over these only.
+        countries=config_provider("countries"),
+    message:
+        "Building the fixed 2050 nuclear fleet for the ARO runs"
+    script:
+        scripts("build_aro_nuclear_fleet.py")
+
+
 # Not part of any default target, and its output is copied into the config by hand rather
 # than read by a rule: the config stays a static, reviewable artifact and no ordinary run
 # depends on the 400 MB retrieval above.

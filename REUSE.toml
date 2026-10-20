@@ -53,6 +53,7 @@ SPDX-License-Identifier = "CC-BY-4.0"
 [[annotations]]
 path = [
     "data/custom_powerplants.csv",
+    "data/aro_nuclear_fleet_2050.csv",
 ]
 SPDX-FileCopyrightText = "The PyPSA-Eur Authors"
 SPDX-License-Identifier = "CC0-1.0"
@@ -94,6 +95,7 @@ SPDX-License-Identifier = "CC0-1.0"
 [[annotations]]
 path = [
     "data/nuclear_p_max_pu.csv",
+    "data/aro_nuclear_p_max_pu.csv",
 ]
 SPDX-FileCopyrightText = "International Atomic Energy Agency (IAEA)"
 SPDX-License-Identifier = "CC-BY-4.0"

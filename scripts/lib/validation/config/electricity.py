@@ -203,6 +203,12 @@ class ElectricityConfig(BaseModel):
         False,
         description="Filter query for the custom powerplant database.",
     )
+    # Fork-specific: lets a run supply its own custom list (e.g. the ARO 2050 nuclear fleet
+    # from `build_aro_nuclear_fleet`) without editing upstream's data file.
+    custom_powerplants_file: str = Field(
+        "data/custom_powerplants.csv",
+        description="Path of the custom powerplant database read when `custom_powerplants` is set. Its rows are appended to the filtered powerplantmatching list, never replace it.",
+    )
     everywhere_powerplants: list[str] = Field(
         default_factory=list,
         description="List of conventional power plants to add to every node in the model with zero initial capacity. To be used in combination with `extendable_carriers` to allow for building conventional powerplants irrespective of existing locations.",
