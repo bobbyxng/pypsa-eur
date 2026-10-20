@@ -456,6 +456,9 @@ def add_endogenous_heat(
     """
     overdim = sector_params["overdimension_heat_generators"]
     vent_cost = sector_params["marginal_cost_heat_vent"]
+    # technology-data VOM per MWh of heat, which upstream's add_heat never applies; off by
+    # default for parity. memory: heat-variable-costs-degeneracy
+    vom = costs["VOM"].fillna(0.0) * float(options.get("variable_costs", False))
     ac_nodes = n.buses.index[n.buses.carrier == "AC"]
 
     for system, (demand, inv_cop, c_or_d) in merge_heat_systems(systems).items():
@@ -513,6 +516,9 @@ def add_endogenous_heat(
                 nodes + f" {system} air heat pump", axis=1
             ),
             capital_cost=costs.at[hp_key, "capital_cost"] * factor,
+            # p0 is heat and runs NEGATIVE (reversed wiring), so the per-MWh_th VOM enters
+            # with a minus sign to be a cost.
+            marginal_cost=-vom.at[hp_key],
             p_min_pu=-1.0,
             p_max_pu=0.0,
             p_nom_extendable=True,
@@ -530,6 +536,8 @@ def add_endogenous_heat(
             capital_cost=costs.at[res_key, "efficiency"]
             * costs.at[res_key, "capital_cost"]
             * factor,
+            # VOM is per MWh_th; p0 is electricity in.
+            marginal_cost=vom.at[res_key] * costs.at[res_key, "efficiency"],
             p_nom_extendable=True,
             lifetime=costs.at[res_key, "lifetime"],
         )
@@ -564,6 +572,8 @@ def add_endogenous_heat(
             bus1=heat_bus,
             carrier=f"{system} water tanks discharger",
             efficiency=costs.at[f"{c_or_d} water tank discharger", "efficiency"],
+            # The tank's VOM, per MWh leaving the store (p0).
+            marginal_cost=vom.at[tank_key],
             p_nom_extendable=True,
             lifetime=costs.at[tank_key, "lifetime"],
         )

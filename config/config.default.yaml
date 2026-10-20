@@ -1553,6 +1553,7 @@ aro:
     mode: exogenous
     endogenous:
       h2_chp: true
+      variable_costs: false
       methanol_chp: true
     shares: {}
     default_shares:

@@ -55,6 +55,10 @@ class AroHeatEndogenousConfig(ConfigModel):
         True,
         description="Offer an H2 CHP (H2 -> electricity + district heat) at urban-central nodes that have an H2 bus. Priced with pypsa-eur's 'central gas CHP' row as an H2-ready engine/turbine proxy; pypsa-eur has no H2 CHP of its own.",
     )
+    variable_costs: bool = Field(
+        False,
+        description="Charge technology-data VOM on the heat technologies, which pypsa-eur's add_heat leaves at zero: central air heat pump 3.57 and central resistive heater 1.34 EUR/MWh_th, decentral water-tank discharge 1.55 EUR/MWh (decentral heat pump and resistive heater have no VOM in technology-data). Real O&M that also breaks the near-free heat-pump/resistive/tank ties that stall barrier. Off (default) keeps parity with add_heat.",
+    )
     methanol_chp: bool = Field(
         True,
         description="Offer a methanol CHP (methanol -> electricity + district heat) at urban-central nodes, drawing on the local methanol tank of `aro.methanol` with the same access rule as its turbines (backup-only under `reserve_only`). Inert unless `aro.methanol.enable`. 'central gas CHP' data, as Glaum et al.'s min-MeOH-economy.",
