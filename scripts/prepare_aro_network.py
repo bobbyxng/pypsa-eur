@@ -430,6 +430,31 @@ def merge_heat_systems(
     return merged
 
 
+def add_dc_losses(n: pypsa.Network, efficiencies: dict) -> None:
+    """
+    Make every DC link lossy and bidirectional, exactly as a sector run does.
+
+    Reuses `prepare_sector_network.lossy_bidirectional_links`: the link becomes forward-only
+    with efficiency `efficiency_static * efficiency_per_1000km ** (length / 1000)`, and a
+    `-reversed` twin (capital_cost 0, `reversed: True`) carries the opposite direction. That
+    also repairs the transmission-project links, which `new_links.csv` adds with PyPSA's
+    default p_min_pu = 0, i.e. one-directional (memory: bidirectional-links-unsupported).
+    The twins' p_nom must be tied to the forward links in the optimisation: PyPSARO's
+    `add_bidirectional_link_constraints` does that in the investment LP and the C&CG master.
+    """
+    if (
+        n.links.get("reversed", pd.Series(False, index=n.links.index))
+        .fillna(False)
+        .any()
+    ):
+        raise ValueError(
+            "Network already has '-reversed' links; splitting again would double them."
+        )
+    from scripts.prepare_sector_network import lossy_bidirectional_links
+
+    lossy_bidirectional_links(n, "DC", efficiencies)
+
+
 def add_endogenous_heat(
     n: pypsa.Network,
     systems: list[tuple[HeatSystem, pd.DataFrame, pd.DataFrame]],
@@ -1102,6 +1127,8 @@ if __name__ == "__main__":
     cap_hydrogen_storage(n, snakemake.input.h2_cavern, costs, snakemake.params.sector)
     add_h2_turbines(n, costs, snakemake.params.aro_h2_turbine)
     add_methanol(n, costs, snakemake.params.aro_methanol)
+    if snakemake.params.aro_dc_losses:
+        add_dc_losses(n, snakemake.params.sector["transmission_efficiency"]["DC"])
 
     if not params["enable"]:
         logger.info(

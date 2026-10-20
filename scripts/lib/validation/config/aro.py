@@ -162,3 +162,7 @@ class AroConfig(ConfigModel):
         default_factory=AroMethanolConfig,
         description="Optional purchased renewable methanol, local storage and turbines.",
     )
+    dc_losses: bool = Field(
+        False,
+        description="Split every DC link into a lossy forward link and a '-reversed' twin, as pypsa-eur's prepare_sector_network.lossy_bidirectional_links does for sector runs, with `sector.transmission_efficiency.DC` (default 2% static + 2.3% per 1000 km). Electricity-only builds never call it, so their DC links stay lossless -- and links from `transmission_projects` (new_links.csv carries no p_min_pu) stay ONE-DIRECTIONAL. The reversed twin has capital_cost 0; PyPSARO's add_bidirectional_link_constraints ties its p_nom to the forward link. Off (default) reproduces existing networks.",
+    )
