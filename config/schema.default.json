@@ -185,8 +185,8 @@
                   "type": "boolean"
                 },
                 "variable_costs": {
-                  "default": false,
-                  "description": "Charge technology-data VOM on the heat technologies, which pypsa-eur's add_heat leaves at zero: central air heat pump 3.57 and central resistive heater 1.34 EUR/MWh_th, decentral water-tank discharge 1.55 EUR/MWh (decentral heat pump and resistive heater have no VOM in technology-data). Real O&M that also breaks the near-free heat-pump/resistive/tank ties that stall barrier. Off (default) keeps parity with add_heat.",
+                  "default": true,
+                  "description": "Charge technology-data VOM on the heat technologies, which pypsa-eur's add_heat leaves at zero: central air heat pump 3.57 and central resistive heater 1.34 EUR/MWh_th, decentral water-tank discharge 1.55 EUR/MWh (decentral heat pump and resistive heater have no VOM in technology-data). Real O&M that also breaks the near-free heat-pump/resistive/tank ties that stall barrier. On by default since 2026-10-20; off keeps marginal-cost parity with add_heat (runs before then).",
                   "type": "boolean"
                 },
                 "methanol_chp": {
@@ -304,8 +304,8 @@
           }
         },
         "dc_losses": {
-          "default": false,
-          "description": "Split every DC link into a lossy forward link and a '-reversed' twin, as pypsa-eur's prepare_sector_network.lossy_bidirectional_links does for sector runs, with `sector.transmission_efficiency.DC` (default 2% static + 2.3% per 1000 km). Electricity-only builds never call it, so their DC links stay lossless -- and links from `transmission_projects` (new_links.csv carries no p_min_pu) stay ONE-DIRECTIONAL. The reversed twin has capital_cost 0; PyPSARO's add_bidirectional_link_constraints ties its p_nom to the forward link. Off (default) reproduces existing networks.",
+          "default": true,
+          "description": "Split every DC link into a lossy forward link and a '-reversed' twin, as pypsa-eur's prepare_sector_network.lossy_bidirectional_links does for sector runs, with `sector.transmission_efficiency.DC` (default 2% static + 2.3% per 1000 km). Electricity-only builds never call it, so their DC links stay lossless -- and links from `transmission_projects` (new_links.csv carries no p_min_pu) stay ONE-DIRECTIONAL. The reversed twin has capital_cost 0; PyPSARO's add_bidirectional_link_constraints ties its p_nom to the forward link. On by default since 2026-10-20; off reproduces networks built before then.",
           "type": "boolean"
         }
       }
@@ -348,8 +348,8 @@
               "type": "boolean"
             },
             "variable_costs": {
-              "default": false,
-              "description": "Charge technology-data VOM on the heat technologies, which pypsa-eur's add_heat leaves at zero: central air heat pump 3.57 and central resistive heater 1.34 EUR/MWh_th, decentral water-tank discharge 1.55 EUR/MWh (decentral heat pump and resistive heater have no VOM in technology-data). Real O&M that also breaks the near-free heat-pump/resistive/tank ties that stall barrier. Off (default) keeps parity with add_heat.",
+              "default": true,
+              "description": "Charge technology-data VOM on the heat technologies, which pypsa-eur's add_heat leaves at zero: central air heat pump 3.57 and central resistive heater 1.34 EUR/MWh_th, decentral water-tank discharge 1.55 EUR/MWh (decentral heat pump and resistive heater have no VOM in technology-data). Real O&M that also breaks the near-free heat-pump/resistive/tank ties that stall barrier. On by default since 2026-10-20; off keeps marginal-cost parity with add_heat (runs before then).",
               "type": "boolean"
             },
             "methanol_chp": {
@@ -423,8 +423,8 @@
           "type": "boolean"
         },
         "variable_costs": {
-          "default": false,
-          "description": "Charge technology-data VOM on the heat technologies, which pypsa-eur's add_heat leaves at zero: central air heat pump 3.57 and central resistive heater 1.34 EUR/MWh_th, decentral water-tank discharge 1.55 EUR/MWh (decentral heat pump and resistive heater have no VOM in technology-data). Real O&M that also breaks the near-free heat-pump/resistive/tank ties that stall barrier. Off (default) keeps parity with add_heat.",
+          "default": true,
+          "description": "Charge technology-data VOM on the heat technologies, which pypsa-eur's add_heat leaves at zero: central air heat pump 3.57 and central resistive heater 1.34 EUR/MWh_th, decentral water-tank discharge 1.55 EUR/MWh (decentral heat pump and resistive heater have no VOM in technology-data). Real O&M that also breaks the near-free heat-pump/resistive/tank ties that stall barrier. On by default since 2026-10-20; off keeps marginal-cost parity with add_heat (runs before then).",
           "type": "boolean"
         },
         "methanol_chp": {
@@ -14689,8 +14689,8 @@
                   "type": "boolean"
                 },
                 "variable_costs": {
-                  "default": false,
-                  "description": "Charge technology-data VOM on the heat technologies, which pypsa-eur's add_heat leaves at zero: central air heat pump 3.57 and central resistive heater 1.34 EUR/MWh_th, decentral water-tank discharge 1.55 EUR/MWh (decentral heat pump and resistive heater have no VOM in technology-data). Real O&M that also breaks the near-free heat-pump/resistive/tank ties that stall barrier. Off (default) keeps parity with add_heat.",
+                  "default": true,
+                  "description": "Charge technology-data VOM on the heat technologies, which pypsa-eur's add_heat leaves at zero: central air heat pump 3.57 and central resistive heater 1.34 EUR/MWh_th, decentral water-tank discharge 1.55 EUR/MWh (decentral heat pump and resistive heater have no VOM in technology-data). Real O&M that also breaks the near-free heat-pump/resistive/tank ties that stall barrier. On by default since 2026-10-20; off keeps marginal-cost parity with add_heat (runs before then).",
                   "type": "boolean"
                 },
                 "methanol_chp": {
@@ -14808,8 +14808,8 @@
           }
         },
         "dc_losses": {
-          "default": false,
-          "description": "Split every DC link into a lossy forward link and a '-reversed' twin, as pypsa-eur's prepare_sector_network.lossy_bidirectional_links does for sector runs, with `sector.transmission_efficiency.DC` (default 2% static + 2.3% per 1000 km). Electricity-only builds never call it, so their DC links stay lossless -- and links from `transmission_projects` (new_links.csv carries no p_min_pu) stay ONE-DIRECTIONAL. The reversed twin has capital_cost 0; PyPSARO's add_bidirectional_link_constraints ties its p_nom to the forward link. Off (default) reproduces existing networks.",
+          "default": true,
+          "description": "Split every DC link into a lossy forward link and a '-reversed' twin, as pypsa-eur's prepare_sector_network.lossy_bidirectional_links does for sector runs, with `sector.transmission_efficiency.DC` (default 2% static + 2.3% per 1000 km). Electricity-only builds never call it, so their DC links stay lossless -- and links from `transmission_projects` (new_links.csv carries no p_min_pu) stay ONE-DIRECTIONAL. The reversed twin has capital_cost 0; PyPSARO's add_bidirectional_link_constraints ties its p_nom to the forward link. On by default since 2026-10-20; off reproduces networks built before then.",
           "type": "boolean"
         }
       }

@@ -1554,7 +1554,7 @@ aro:
     mode: exogenous
     endogenous:
       h2_chp: true
-      variable_costs: false
+      variable_costs: true
       methanol_chp: true
     shares: {}
     default_shares:
@@ -1574,7 +1574,7 @@ aro:
     - CCGT
     reserve_only: false
     reserve_inventory_carrying_rate: 0.07
-  dc_losses: false
+  dc_losses: true
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#overpass_api_cf
 overpass_api:

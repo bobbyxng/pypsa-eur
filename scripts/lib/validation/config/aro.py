@@ -56,8 +56,8 @@ class AroHeatEndogenousConfig(ConfigModel):
         description="Offer an H2 CHP (H2 -> electricity + district heat) at urban-central nodes that have an H2 bus. Priced with pypsa-eur's 'central gas CHP' row as an H2-ready engine/turbine proxy; pypsa-eur has no H2 CHP of its own.",
     )
     variable_costs: bool = Field(
-        False,
-        description="Charge technology-data VOM on the heat technologies, which pypsa-eur's add_heat leaves at zero: central air heat pump 3.57 and central resistive heater 1.34 EUR/MWh_th, decentral water-tank discharge 1.55 EUR/MWh (decentral heat pump and resistive heater have no VOM in technology-data). Real O&M that also breaks the near-free heat-pump/resistive/tank ties that stall barrier. Off (default) keeps parity with add_heat.",
+        True,
+        description="Charge technology-data VOM on the heat technologies, which pypsa-eur's add_heat leaves at zero: central air heat pump 3.57 and central resistive heater 1.34 EUR/MWh_th, decentral water-tank discharge 1.55 EUR/MWh (decentral heat pump and resistive heater have no VOM in technology-data). Real O&M that also breaks the near-free heat-pump/resistive/tank ties that stall barrier. On by default since 2026-10-20; off keeps marginal-cost parity with add_heat (runs before then).",
     )
     methanol_chp: bool = Field(
         True,
@@ -163,6 +163,6 @@ class AroConfig(ConfigModel):
         description="Optional purchased renewable methanol, local storage and turbines.",
     )
     dc_losses: bool = Field(
-        False,
-        description="Split every DC link into a lossy forward link and a '-reversed' twin, as pypsa-eur's prepare_sector_network.lossy_bidirectional_links does for sector runs, with `sector.transmission_efficiency.DC` (default 2% static + 2.3% per 1000 km). Electricity-only builds never call it, so their DC links stay lossless -- and links from `transmission_projects` (new_links.csv carries no p_min_pu) stay ONE-DIRECTIONAL. The reversed twin has capital_cost 0; PyPSARO's add_bidirectional_link_constraints ties its p_nom to the forward link. Off (default) reproduces existing networks.",
+        True,
+        description="Split every DC link into a lossy forward link and a '-reversed' twin, as pypsa-eur's prepare_sector_network.lossy_bidirectional_links does for sector runs, with `sector.transmission_efficiency.DC` (default 2% static + 2.3% per 1000 km). Electricity-only builds never call it, so their DC links stay lossless -- and links from `transmission_projects` (new_links.csv carries no p_min_pu) stay ONE-DIRECTIONAL. The reversed twin has capital_cost 0; PyPSARO's add_bidirectional_link_constraints ties its p_nom to the forward link. On by default since 2026-10-20; off reproduces networks built before then.",
     )
