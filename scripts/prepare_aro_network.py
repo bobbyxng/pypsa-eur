@@ -455,6 +455,36 @@ def add_dc_losses(n: pypsa.Network, efficiencies: dict) -> None:
     lossy_bidirectional_links(n, "DC", efficiencies)
 
 
+def fix_cross_border_transmission(n: pypsa.Network) -> None:
+    """
+    Freeze every interconnector at its input capacity; lines inside a country stay extendable.
+
+    The study's grid is exogenous at the borders (today + TYNDP/NEP projects, as built by
+    `transmission_projects`) and endogenous inside a country. The border is also where the
+    European pre-run is cut into country runs, whose border flows only stay valid if the
+    border capacities are the pre-run's. pypsa-eur's `transmission_limit` cannot express this
+    (`vopt` makes every line and DC link extendable), so it is applied here, after the DC
+    split so `-reversed` twins are frozen with their forward links. memory:
+    robust-design-grid-expansion
+    """
+    country = n.buses.country
+    cross_lines = n.lines.bus0.map(country) != n.lines.bus1.map(country)
+    n.lines.loc[cross_lines, "s_nom_extendable"] = False
+    dc = n.links.carrier == "DC"
+    cross_links = dc & (n.links.bus0.map(country) != n.links.bus1.map(country))
+    n.links.loc[cross_links, "p_nom_extendable"] = False
+    logger.info(
+        "Cross-border transmission fixed: %d lines (%.1f GW), %d DC links (%.1f GW); "
+        "%d lines and %d DC links inside countries stay as configured.",
+        cross_lines.sum(),
+        n.lines.loc[cross_lines, "s_nom"].sum() / 1e3,
+        cross_links.sum(),
+        n.links.loc[cross_links, "p_nom"].sum() / 1e3,
+        (~cross_lines).sum(),
+        (dc & ~cross_links).sum(),
+    )
+
+
 def add_endogenous_heat(
     n: pypsa.Network,
     systems: list[tuple[HeatSystem, pd.DataFrame, pd.DataFrame]],
@@ -1129,6 +1159,8 @@ if __name__ == "__main__":
     add_methanol(n, costs, snakemake.params.aro_methanol)
     if snakemake.params.aro_dc_losses:
         add_dc_losses(n, snakemake.params.sector["transmission_efficiency"]["DC"])
+    if snakemake.params.aro_fix_cross_border_transmission:
+        fix_cross_border_transmission(n)
 
     if not params["enable"]:
         logger.info(

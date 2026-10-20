@@ -145,6 +145,9 @@ rule prepare_aro_network:
         aro_h2_turbine=config_provider("aro", "h2_turbine"),
         aro_methanol=config_provider("aro", "methanol"),
         aro_dc_losses=config_provider("aro", "dc_losses"),
+        aro_fix_cross_border_transmission=config_provider(
+            "aro", "fix_cross_border_transmission"
+        ),
         energy_totals_year=config_provider("energy", "energy_totals_year"),
         sector=config_provider("sector"),
         # The input network is already temporally aggregated (compose_network folds that in),

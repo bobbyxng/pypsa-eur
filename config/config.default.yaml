@@ -1575,6 +1575,7 @@ aro:
     reserve_only: false
     reserve_inventory_carrying_rate: 0.07
   dc_losses: true
+  fix_cross_border_transmission: true
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#overpass_api_cf
 overpass_api:

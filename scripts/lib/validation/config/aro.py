@@ -166,3 +166,7 @@ class AroConfig(ConfigModel):
         True,
         description="Split every DC link into a lossy forward link and a '-reversed' twin, as pypsa-eur's prepare_sector_network.lossy_bidirectional_links does for sector runs, with `sector.transmission_efficiency.DC` (default 2% static + 2.3% per 1000 km). Electricity-only builds never call it, so their DC links stay lossless -- and links from `transmission_projects` (new_links.csv carries no p_min_pu) stay ONE-DIRECTIONAL. The reversed twin has capital_cost 0; PyPSARO's add_bidirectional_link_constraints ties its p_nom to the forward link. On by default since 2026-10-20; off reproduces networks built before then.",
     )
+    fix_cross_border_transmission: bool = Field(
+        True,
+        description="Make every line and DC link between two countries non-extendable at its input capacity (today + `transmission_projects`), while lines inside a country keep whatever `transmission_limit` gives them (e.g. extendable under `vopt`). The study's grid is exogenous at the borders, where the European pre-run is cut into country runs. No effect on single-country networks. Added 2026-10-20.",
+    )
