@@ -178,6 +178,13 @@ anything non-trivial.
   i.e. PL: per-year median over the run's modelled countries, UA excluded; `add_electricity` would otherwise leave it at 1.0), used via
   `conventional: nuclear: p_max_pu`. Tests: `test/test_build_aro_nuclear_fleet.py`.
 
+- **Custom data versions** (`data/custom_versions.csv`, the soft-fork route of
+  `doc/data_sources.md`): extra rows appended to `data/versions.csv` through
+  `data.version_files` in a run's config, so upstream's table stays untouched. Currently one
+  row: technology-data `costs` pinned to the commit of PR #291 (nuclear fuel price fix), used
+  by PyPSARO's `europe-pre-run` config. Tagged `supported` only, never `latest`, so runs on
+  `version: latest` are unaffected. Replace with the release once it contains the fix.
+
 - **Shared resources stay inside the run prefix** (`Snakefile` `SHARED_DIR`, `shared_dir` in
   `scripts/_helpers.py` `get_run_path`): with `run.shared_resources.policy: base` (or `true`)
   upstream writes shared files to the top level of `resources/`, shared across EVERY prefix,
