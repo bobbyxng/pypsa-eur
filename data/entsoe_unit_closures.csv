@@ -1,12 +1,13 @@
 # Closure of ENTSO-E production units still listed, or still reporting outages, after they
-# stopped operating (build_conventional_unavailability). date_out is the first day the unit
-# no longer operates: from then on its notices and its capacity no longer count. For units
-# that stopped producing long before their formal retirement (Garona, Dungeness B), the date
-# the unit last operated, since it never ran again. Curated by hand (not built by a rule):
-# ENTSO-E 14.1.B status DECOMMISSIONED where the File Library capacity list sets it (BE, CH),
-# otherwise the operator's announced shutdown date. The year agrees with powerplantmatching's
-# DateOut wherever ppm has one, except Garona (ppm: formal retirement 2017); Doel 1/2 and
-# Tihange 1 (2025) have no DateOut in ppm 0.8.1.
+# stopped operating (build_conventional_unavailability). From date_out on, a unit's notices
+# and its capacity no longer count. Curated by hand (not built by a rule): ENTSO-E 14.1.B
+# status DECOMMISSIONED where the File Library capacity list sets it (BE, CH), otherwise the
+# IAEA PRIS permanent shutdown date (as listed in the World Nuclear Association reactor
+# database, checked 2026-10-29; for a multi-reactor unit the last reactor). For units that
+# stopped producing long before their formal retirement (Garona, Dungeness B), the date they
+# last operated, since they never ran again. The year agrees with powerplantmatching's DateOut
+# wherever ppm has one, except these two (ppm: formal retirement); Doel 1/2 and Tihange 1
+# (2025) have no DateOut in ppm 0.8.1.
 country,production_resource_id,name,date_out,source
 BE,22WDOELX3000078D,DOEL 3,2022-09-23,"ENTSO-E 14.1.B DECOMMISSIONED 2022-10-01; last generation 2022-09-23"
 BE,22WTIHANG000241T,TIHANGE 2,2023-02-01,"ENTSO-E 14.1.B DECOMMISSIONED 2023-02-01"
@@ -16,12 +17,12 @@ BE,22WTIHANG000239G,TIHANGE 1N,2025-10-01,"ENTSO-E 14.1.B DECOMMISSIONED 2025-10
 BE,22WTIHANG000240V,TIHANGE 1S,2025-10-01,"ENTSO-E 14.1.B DECOMMISSIONED 2025-10-01"
 CH,12W-0000000057-Z,KKW Mühleberg (KKM),2019-12-20,"ENTSO-E 14.1.B DECOMMISSIONED 2019-12-20"
 ES,18WGAR1-12345-08,S.M.GAROÑA,2012-12-16,"last operation 2012-12-16 (formally retired 2017-08-02); ppm DateOut 2017"
-FR,17W100P100P0207N,FESSENHEIM 1,2020-02-22,"EDF: reactor 1 shut down 2020-02-22; ppm DateOut 2020"
-FR,17W100P100P0208L,FESSENHEIM 2,2020-06-30,"EDF: reactor 2 shut down 2020-06-30; ppm DateOut 2020"
-GB,48WSTN00000OLDSS,OLDS,2012-02-29,"Oldbury A reactor 1 shut down 2012-02-29; ppm DateOut 2012"
-GB,48WSTN00000WYLFC,WYLF,2015-12-30,"Wylfa reactor 1 shut down 2015-12-30"
-GB,48WSTN00000DNGBQ,DNGB,2021-06-07,"EDF closure announcement 2021-06-07 (offline since 2018); ppm DateOut 2021"
-GB,48WSTN00000HUNBV,HUNB,2022-01-07,"Hunterston B reactor 3 shut 2021-11-26, reactor 4 2022-01-07; ppm DateOut 2022"
-GB,48WSTN00000HINB5,HINB,2022-08-01,"Hinkley Point B reactor 4 shut 2022-07-06, reactor 3 2022-08-01; ppm DateOut 2022"
-SE,46WPU00000000113,Ringhals 2,2019-12-30,"Vattenfall: shut down 2019-12-30"
-SE,46WPU00000000105,Ringhals 1,2020-12-31,"Vattenfall: shut down 2020-12-31"
+FR,17W100P100P0207N,FESSENHEIM 1,2020-02-22,"IAEA PRIS permanent shutdown 2020-02-22; ppm DateOut 2020"
+FR,17W100P100P0208L,FESSENHEIM 2,2020-06-30,"IAEA PRIS permanent shutdown 2020-06-30; ppm DateOut 2020"
+GB,48WSTN00000OLDSS,OLDS,2012-02-29,"IAEA PRIS: Oldbury A 2 shut 2011-06-30, Oldbury A 1 2012-02-29; ppm DateOut 2012"
+GB,48WSTN00000WYLFC,WYLF,2015-12-30,"IAEA PRIS: Wylfa 2 shut 2012-04-25, Wylfa 1 2015-12-30"
+GB,48WSTN00000DNGBQ,DNGB,2018-09-23,"last ENTSO-E 16.1.A output above 1 MW: DNGB-21 2018-09-23 (DNGB-22 2018-07-03), none 2019-2021; IAEA PRIS permanent shutdown 2021-06-07; ppm DateOut 2021"
+GB,48WSTN00000HUNBV,HUNB,2022-01-07,"IAEA PRIS: Hunterston B 1 shut 2021-11-26, B 2 2022-01-07; ppm DateOut 2022"
+GB,48WSTN00000HINB5,HINB,2022-08-01,"IAEA PRIS: Hinkley Point B 2 shut 2022-07-06, B 1 2022-08-01; ppm DateOut 2022"
+SE,46WPU00000000113,Ringhals 2,2019-12-31,"IAEA PRIS permanent shutdown 2019-12-31 (last turbine stopped 2019-12-30)"
+SE,46WPU00000000105,Ringhals 1,2020-12-31,"IAEA PRIS permanent shutdown 2020-12-31"
