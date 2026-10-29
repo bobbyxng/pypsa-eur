@@ -269,6 +269,10 @@ class DataConfig(BaseModel):
         default_factory=lambda: _DataSourceConfig(source="archive"),
         description="ENTSO-E electricity demand data source configuration.",
     )
+    entsoe_unavailability: _DataSourceConfig = Field(
+        default_factory=lambda: _DataSourceConfig(source="build"),
+        description="ENTSO-E unavailability of production and generation units data source configuration. 'build' queries the ENTSO-E Transparency Platform API and needs the environment variable ENTSOE_API_TOKEN.",
+    )
     neso_electricity_demand: _DataSourceConfig = Field(
         default_factory=lambda: _DataSourceConfig(source="archive"),
         description="NESO electricity demand data source configuration.",

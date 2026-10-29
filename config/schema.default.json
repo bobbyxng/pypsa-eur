@@ -1115,6 +1115,86 @@
           "minimum": 1,
           "type": "integer"
         },
+        "unavailability": {
+          "description": "Configuration for `conventional.unavailability` settings.",
+          "properties": {
+            "enable": {
+              "default": false,
+              "description": "Derive time-varying availability (`p_max_pu`) of conventional generators from reported outages on the ENTSO-E Transparency Platform (unavailability of production and generation units, 15.1.A-D), instead of the static values under `conventional: <carrier>: p_max_pu`.",
+              "type": "boolean"
+            },
+            "carriers": {
+              "description": "Carriers whose availability is derived from outages.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "outage_types": {
+              "description": "Outage types that reduce availability: planned maintenance and/or forced (unplanned) outages.",
+              "items": {
+                "enum": [
+                  "planned",
+                  "forced"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "method": {
+              "default": "climatology",
+              "description": "'climatology' averages each country's availability per calendar month over `reference_periods` and applies it to any modelled year. 'historical' applies the outages of the modelled snapshots themselves, per power plant where it maps to an ENTSO-E unit and per country otherwise; the snapshots must lie within the retrieved years.",
+              "enum": [
+                "climatology",
+                "historical"
+              ],
+              "type": "string"
+            },
+            "reference_periods": {
+              "description": "Configuration for `conventional.unavailability.reference_periods` settings.",
+              "properties": {
+                "include": {
+                  "description": "Calendar years (`YYYY`) or months (`YYYY-MM`) of historical outage data to use. Empty uses every year from 2015, the start of the ENTSO-E Transparency Platform, to the last complete calendar year.",
+                  "items": {
+                    "pattern": "^\\d{4}(-(0[1-9]|1[0-2]))?$",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "exclude": {
+                  "description": "Calendar years (`YYYY`) or months (`YYYY-MM`) of historical outage data to leave out; takes precedence over `include`.",
+                  "items": {
+                    "pattern": "^\\d{4}(-(0[1-9]|1[0-2]))?$",
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "min_coverage": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 0.5,
+              "description": "Reporting on the Transparency Platform is incomplete in some countries and years (e.g. Slovak nuclear only from 2021), and an unreported outage reads as availability. Where the carrier has a static `p_max_pu` table (IAEA PRIS energy availability factors for nuclear), a country-year is used only if the output lost to reported outages is at least this share of the loss the table implies, (1 - availability from outages) / (1 - table value). Country-years without any reported outage are never used. null skips the comparison."
+            },
+            "fallback": {
+              "default": "median",
+              "description": "Availability for countries without outage data: 'median' takes the median over the countries with data (per calendar month, or per snapshot for 'historical'); 'static' keeps the values under `conventional: <carrier>: p_max_pu`.",
+              "enum": [
+                "median",
+                "static"
+              ],
+              "type": "string"
+            }
+          }
+        },
         "nuclear": {
           "additionalProperties": {
             "anyOf": [
@@ -1809,6 +1889,26 @@
           }
         },
         "entsoe_electricity_demand": {
+          "description": "Configuration for a single data source.",
+          "properties": {
+            "source": {
+              "default": "archive",
+              "description": "Source of the data. 'archive' retrieves pre-built data, 'primary' retrieves from primary source.",
+              "enum": [
+                "archive",
+                "primary",
+                "build"
+              ],
+              "type": "string"
+            },
+            "version": {
+              "default": "latest",
+              "description": "Version of the data to use. Uses the specific 'version' for the selected 'source' or the dataset tagged 'latest' for this source.",
+              "type": "string"
+            }
+          }
+        },
+        "entsoe_unavailability": {
           "description": "Configuration for a single data source.",
           "properties": {
             "source": {
@@ -8042,6 +8142,27 @@
         }
       }
     },
+    "_ReferencePeriodsConfig": {
+      "description": "Configuration for `conventional.unavailability.reference_periods` settings.",
+      "properties": {
+        "include": {
+          "description": "Calendar years (`YYYY`) or months (`YYYY-MM`) of historical outage data to use. Empty uses every year from 2015, the start of the ENTSO-E Transparency Platform, to the last complete calendar year.",
+          "items": {
+            "pattern": "^\\d{4}(-(0[1-9]|1[0-2]))?$",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "exclude": {
+          "description": "Calendar years (`YYYY`) or months (`YYYY-MM`) of historical outage data to leave out; takes precedence over `include`.",
+          "items": {
+            "pattern": "^\\d{4}(-(0[1-9]|1[0-2]))?$",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      }
+    },
     "_ResidentialHeatConfig": {
       "description": "Configuration for `sector.residential_heat` settings.",
       "properties": {
@@ -8753,6 +8874,86 @@
           },
           "description": "CO2 pipeline transmission efficiency.",
           "type": "object"
+        }
+      }
+    },
+    "_UnavailabilityConfig": {
+      "description": "Configuration for `conventional.unavailability` settings.",
+      "properties": {
+        "enable": {
+          "default": false,
+          "description": "Derive time-varying availability (`p_max_pu`) of conventional generators from reported outages on the ENTSO-E Transparency Platform (unavailability of production and generation units, 15.1.A-D), instead of the static values under `conventional: <carrier>: p_max_pu`.",
+          "type": "boolean"
+        },
+        "carriers": {
+          "description": "Carriers whose availability is derived from outages.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "outage_types": {
+          "description": "Outage types that reduce availability: planned maintenance and/or forced (unplanned) outages.",
+          "items": {
+            "enum": [
+              "planned",
+              "forced"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "method": {
+          "default": "climatology",
+          "description": "'climatology' averages each country's availability per calendar month over `reference_periods` and applies it to any modelled year. 'historical' applies the outages of the modelled snapshots themselves, per power plant where it maps to an ENTSO-E unit and per country otherwise; the snapshots must lie within the retrieved years.",
+          "enum": [
+            "climatology",
+            "historical"
+          ],
+          "type": "string"
+        },
+        "reference_periods": {
+          "description": "Configuration for `conventional.unavailability.reference_periods` settings.",
+          "properties": {
+            "include": {
+              "description": "Calendar years (`YYYY`) or months (`YYYY-MM`) of historical outage data to use. Empty uses every year from 2015, the start of the ENTSO-E Transparency Platform, to the last complete calendar year.",
+              "items": {
+                "pattern": "^\\d{4}(-(0[1-9]|1[0-2]))?$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "exclude": {
+              "description": "Calendar years (`YYYY`) or months (`YYYY-MM`) of historical outage data to leave out; takes precedence over `include`.",
+              "items": {
+                "pattern": "^\\d{4}(-(0[1-9]|1[0-2]))?$",
+                "type": "string"
+              },
+              "type": "array"
+            }
+          }
+        },
+        "min_coverage": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0.5,
+          "description": "Reporting on the Transparency Platform is incomplete in some countries and years (e.g. Slovak nuclear only from 2021), and an unreported outage reads as availability. Where the carrier has a static `p_max_pu` table (IAEA PRIS energy availability factors for nuclear), a country-year is used only if the output lost to reported outages is at least this share of the loss the table implies, (1 - availability from outages) / (1 - table value). Country-years without any reported outage are never used. null skips the comparison."
+        },
+        "fallback": {
+          "default": "median",
+          "description": "Availability for countries without outage data: 'median' takes the median over the countries with data (per calendar month, or per snapshot for 'historical'); 'static' keeps the values under `conventional: <carrier>: p_max_pu`.",
+          "enum": [
+            "median",
+            "static"
+          ],
+          "type": "string"
         }
       }
     },
@@ -10714,6 +10915,86 @@
           "description": "Monthly rolling mean window for fossil fuel prices smoothing.",
           "minimum": 1,
           "type": "integer"
+        },
+        "unavailability": {
+          "description": "Configuration for `conventional.unavailability` settings.",
+          "properties": {
+            "enable": {
+              "default": false,
+              "description": "Derive time-varying availability (`p_max_pu`) of conventional generators from reported outages on the ENTSO-E Transparency Platform (unavailability of production and generation units, 15.1.A-D), instead of the static values under `conventional: <carrier>: p_max_pu`.",
+              "type": "boolean"
+            },
+            "carriers": {
+              "description": "Carriers whose availability is derived from outages.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "outage_types": {
+              "description": "Outage types that reduce availability: planned maintenance and/or forced (unplanned) outages.",
+              "items": {
+                "enum": [
+                  "planned",
+                  "forced"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "method": {
+              "default": "climatology",
+              "description": "'climatology' averages each country's availability per calendar month over `reference_periods` and applies it to any modelled year. 'historical' applies the outages of the modelled snapshots themselves, per power plant where it maps to an ENTSO-E unit and per country otherwise; the snapshots must lie within the retrieved years.",
+              "enum": [
+                "climatology",
+                "historical"
+              ],
+              "type": "string"
+            },
+            "reference_periods": {
+              "description": "Configuration for `conventional.unavailability.reference_periods` settings.",
+              "properties": {
+                "include": {
+                  "description": "Calendar years (`YYYY`) or months (`YYYY-MM`) of historical outage data to use. Empty uses every year from 2015, the start of the ENTSO-E Transparency Platform, to the last complete calendar year.",
+                  "items": {
+                    "pattern": "^\\d{4}(-(0[1-9]|1[0-2]))?$",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "exclude": {
+                  "description": "Calendar years (`YYYY`) or months (`YYYY-MM`) of historical outage data to leave out; takes precedence over `include`.",
+                  "items": {
+                    "pattern": "^\\d{4}(-(0[1-9]|1[0-2]))?$",
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "min_coverage": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": 0.5,
+              "description": "Reporting on the Transparency Platform is incomplete in some countries and years (e.g. Slovak nuclear only from 2021), and an unreported outage reads as availability. Where the carrier has a static `p_max_pu` table (IAEA PRIS energy availability factors for nuclear), a country-year is used only if the output lost to reported outages is at least this share of the loss the table implies, (1 - availability from outages) / (1 - table value). Country-years without any reported outage are never used. null skips the comparison."
+            },
+            "fallback": {
+              "default": "median",
+              "description": "Availability for countries without outage data: 'median' takes the median over the countries with data (per calendar month, or per snapshot for 'historical'); 'static' keeps the values under `conventional: <carrier>: p_max_pu`.",
+              "enum": [
+                "median",
+                "static"
+              ],
+              "type": "string"
+            }
+          }
         },
         "nuclear": {
           "additionalProperties": {
@@ -13944,6 +14225,26 @@
           }
         },
         "entsoe_electricity_demand": {
+          "description": "Configuration for a single data source.",
+          "properties": {
+            "source": {
+              "default": "archive",
+              "description": "Source of the data. 'archive' retrieves pre-built data, 'primary' retrieves from primary source.",
+              "enum": [
+                "archive",
+                "primary",
+                "build"
+              ],
+              "type": "string"
+            },
+            "version": {
+              "default": "latest",
+              "description": "Version of the data to use. Uses the specific 'version' for the selected 'source' or the dataset tagged 'latest' for this source.",
+              "type": "string"
+            }
+          }
+        },
+        "entsoe_unavailability": {
           "description": "Configuration for a single data source.",
           "properties": {
             "source": {

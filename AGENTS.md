@@ -1,3 +1,6 @@
+<!-- SPDX-FileCopyrightText: Contributors to PyPSA-Eur <https://github.com/pypsa/pypsa-eur> -->
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+
 # pypsa-eur (bobbyxng fork) — Agent Guide
 
 This is a fork of [PyPSA-Eur](https://github.com/PyPSA/pypsa-eur) (upstream), on branch
@@ -178,6 +181,24 @@ anything non-trivial.
   i.e. PL: per-year median over the run's modelled countries, UA excluded; `add_electricity` would otherwise leave it at 1.0), used via
   `conventional: nuclear: p_max_pu`. Tests: `test/test_build_aro_nuclear_fleet.py`.
 
+- **Availability from ENTSO-E outages** (`conventional: unavailability`, meant to go upstream
+  as a PR, so it is written upstream-shaped and edits upstream files): `retrieve.smk`
+  `retrieve_entsoe_unavailability` (API per country and year, token from the environment,
+  `data/versions.csv` row `entsoe_unavailability`, source `build`; busy windows are split
+  because entsoe-py silently stops at 5000 documents), `build_electricity.smk`
+  `build_entsoe_actual_generation` (hourly output per unit, 16.1.A, from monthly File
+  Library files in `data/entsoe_actualgeneration/`: the API serves this one day per request)
+  and `build_conventional_unavailability`, and `attach_unavailability` in `add_electricity.py`,
+  fed through `input_conventional`. The cleaning is the hard part and each step fixes a
+  measured defect: latest revision only, identical notices once (Paks republishes), the two
+  reporting levels combined per plant (Ringhals), closed units dropped from
+  `data/entsoe_unit_closures.csv` (hand-curated; the British list is stale since Brexit),
+  losses capped by actual output and counted only in hours with output data (Leibstadt,
+  Paks), and country-years kept only if >= 90% of their loss is in such hours and the loss
+  is 0.5-1.1x the IAEA PRIS table's (Slovak reporting only from 2021, British output data
+  ends 2021). The `historical` method maps ENTSO-E units to power plants through
+  `data/entsoe_unit_mapping.csv` (empty so far) plus ppm's own ENTSO-E codes. Tests:
+  `test/test_build_conventional_unavailability.py`.
 - **Custom data versions** (`data/custom_versions.csv`, the soft-fork route of
   `doc/data_sources.md`): extra rows appended to `data/versions.csv` through
   `data.version_files` in a run's config, so upstream's table stays untouched. Currently one

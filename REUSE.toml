@@ -55,6 +55,8 @@ SPDX-License-Identifier = "CC-BY-4.0"
 path = [
     "data/custom_powerplants.csv",
     "data/aro_nuclear_fleet_2050.csv",
+    "data/entsoe_unit_mapping.csv",
+    "data/entsoe_unit_closures.csv",
 ]
 SPDX-FileCopyrightText = "The PyPSA-Eur Authors"
 SPDX-License-Identifier = "CC0-1.0"

@@ -1,0 +1,6 @@
+# ENTSO-E units -> powerplantmatching units for `conventional: unavailability: method:
+# historical` (build_conventional_unavailability.map_units_to_plants). Completes the ENTSO-E
+# codes ppm stores in `projectID`: one row per ENTSO-E production unit, plus psr_name for a
+# single generation unit of it; gem_id is the GEM id of the ppm unit. Empty so far: the
+# climatology method used by the ARO runs does not map units to plants.
+production_resource_id,psr_name,gem_id

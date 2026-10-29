@@ -685,6 +685,70 @@ def attach_conventional_generators(
                 # Single value affecting all generators of technology k indiscriminantely of country
                 n.generators.loc[idx, attr] = values
 
+    if "conventional_unavailability" in conventional_inputs:
+        attach_unavailability(
+            n, pd.read_csv(conventional_inputs["conventional_unavailability"])
+        )
+
+
+def attach_unavailability(n: pypsa.Network, unavailability: pd.DataFrame) -> None:
+    """
+    Set time-varying `p_max_pu` of conventional generators from reported outages.
+
+    `unavailability` is the output of `build_conventional_unavailability`: per carrier
+    and country (and, for the 'historical' method, per power plant) either one value per
+    calendar month or one per snapshot. Plant rows win over country rows; generators of
+    countries without a row keep their static `p_max_pu`.
+    """
+    snapshots = n.snapshots.get_level_values(-1)
+    by_month = pd.api.types.is_integer_dtype(unavailability.period)
+    unit = unavailability.unit.fillna("").astype(str)
+    p_max_pu = {}
+    for carrier, df in unavailability.groupby("carrier"):
+        gens = n.generators.index[n.generators.carrier == carrier]
+        if gens.empty:
+            continue
+        country = n.generators.loc[gens, "bus"].map(n.buses.country)
+        national = df[unit.loc[df.index] == ""].pivot(
+            index="period", columns="country", values="p_max_pu"
+        )
+        plants = df[unit.loc[df.index] != ""].pivot(
+            index="period", columns="unit", values="p_max_pu"
+        )
+        if by_month:
+            national = national.reindex(snapshots.month).set_axis(n.snapshots)
+            plants = plants.reindex(snapshots.month).set_axis(n.snapshots)
+        else:
+            national.index = pd.DatetimeIndex(national.index)
+            plants.index = pd.DatetimeIndex(plants.index)
+            national = national.reindex(snapshots, method="ffill").set_axis(n.snapshots)
+            plants = plants.reindex(snapshots, method="ffill").set_axis(n.snapshots)
+        # Plant rows match disaggregated generators, named "<bus> <carrier> <ppl index>
+        # <name>" by `aggregate_ppl`; aggregated ones ("<bus> <carrier>") use the country.
+        plant_of = {
+            gen: plant
+            for plant in plants.columns
+            for gen in gens[gens.str.contains(f" {carrier} {plant} ", regex=False)]
+        }
+        for gen in gens:
+            if gen in plant_of:
+                p_max_pu[gen] = plants[plant_of[gen]]
+            elif country[gen] in national:
+                p_max_pu[gen] = national[country[gen]]
+    if p_max_pu:
+        p_max_pu = pd.DataFrame(p_max_pu)
+        logger.info(
+            f"Setting time-varying p_max_pu from reported outages for {p_max_pu.shape[1]} "
+            "generators."
+        )
+        n.generators_t.p_max_pu = pd.concat(
+            [
+                n.generators_t.p_max_pu.drop(columns=p_max_pu.columns, errors="ignore"),
+                p_max_pu,
+            ],
+            axis=1,
+        )
+
 
 def attach_existing_batteries(
     n: pypsa.Network,

@@ -424,6 +424,19 @@ conventional:
   unit_commitment: false
   dynamic_fuel_price: false
   fuel_price_rolling_window: 6
+  unavailability:
+    enable: false
+    carriers:
+    - nuclear
+    outage_types:
+    - planned
+    - forced
+    method: climatology
+    reference_periods:
+      include: []
+      exclude: []
+    min_coverage: 0.5
+    fallback: median
   nuclear:
     p_max_pu: data/nuclear_p_max_pu.csv
 
@@ -1440,6 +1453,9 @@ data:
     version: latest
   entsoe_electricity_demand:
     source: archive
+    version: latest
+  entsoe_unavailability:
+    source: build
     version: latest
   neso_electricity_demand:
     source: archive

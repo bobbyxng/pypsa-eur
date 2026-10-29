@@ -48,6 +48,7 @@ enspreso_biomass,unknown,primary,latest supported,2025-12-02,"2019 version was c
 enspreso_biomass,2019-06-20,archive,latest supported,2026-01-13,,https://data.pypsa.org/workflows/eur/enspreso_biomass/2019-06-20/ENSPRESO_BIOMASS.xlsx
 entsoe_electricity_demand,unknown,build,latest supported,2026-02-02,API request using entsoe-py package,https://transparency.entsoe.eu/load/total/dayAhead
 entsoe_electricity_demand,2026-02-02,archive,latest supported,2026-02-03,API request using entsoe-py package,https://data.pypsa.org/workflows/eur/entsoe_electricity_demand/2026-02-02/electricity_demand_entsoe_raw.csv
+entsoe_unavailability,unknown,build,latest supported,2026-10-28,API request using entsoe-py package (unavailability of production and generation units 15.1.A-D and installed capacity per production unit 14.1.B),https://transparency.entsoe.eu/outage-domain/r2/unavailabilityOfProductionAndGenerationUnits/show
 eu_nuts2013,2015-12-03,primary,latest supported,2025-12-02, ,https://gisco-services.ec.europa.eu/distribution/v2/nuts/download/ref-nuts-2013-03m.geojson.zip
 eu_nuts2013,2015-12-03,archive,latest supported,2026-01-13,,https://data.pypsa.org/workflows/eur/eu_nuts2013/2015-12-03/ref-nuts-2013-03m.geojson.zip
 eu_nuts2021,2021-01-01,primary,latest supported,2025-12-02,,https://gisco-services.ec.europa.eu/distribution/v2/nuts/download/ref-nuts-2021-01m.geojson.zip

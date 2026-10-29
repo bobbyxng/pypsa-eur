@@ -59,6 +59,107 @@ rule build_powerplants:
         scripts("build_powerplants.py")
 
 
+def unavailability_years(w):
+    from scripts.build_conventional_unavailability import reference_years
+
+    cfg = config_provider("conventional", "unavailability")(w)
+    if cfg["method"] == "historical":
+        snapshots = config_provider("snapshots")(w)
+        return list(
+            range(
+                pd.Timestamp(snapshots["start"]).year,
+                (pd.Timestamp(snapshots["end"]) - pd.Timedelta("1s")).year + 1,
+            )
+        )
+    return reference_years(cfg["reference_periods"])
+
+
+def input_entsoe_unavailability(w):
+    folder = ENTSOE_UNAVAILABILITY_DATA["folder"]
+    countries = config_provider("countries")(w)
+    years = unavailability_years(w)
+    cfg = config_provider("conventional", "unavailability")(w)
+    files = {
+        kind: [f"{folder}/{c}/{y}_{kind}.csv" for c in countries for y in years]
+        for kind in ["outages", "capacity"]
+    }
+    files["closures"] = "data/entsoe_unit_closures.csv"
+    files["generation"] = [
+        resources(f"entsoe_actual_generation_{y}.csv") for y in years
+    ]
+    # The static availability tables of the carriers (e.g. IAEA PRIS energy availability
+    # factors for nuclear) check how completely each country-year is reported.
+    static = {
+        carrier: fn
+        for carrier in cfg["carriers"]
+        if str(
+            fn := config_provider("conventional", carrier, "p_max_pu", default="")(w)
+        ).startswith("data/")
+    }
+    if static:
+        files["static"] = list(static.values())
+    if cfg["method"] == "historical":
+        files["powerplants"] = resources("powerplants.csv")
+        files["unit_mapping"] = "data/entsoe_unit_mapping.csv"
+    return files
+
+
+# Hourly actual output per generation unit (16.1.A), to bound reported outages by what the
+# units produced. Reads the monthly File Library files from data/entsoe_actualgeneration/;
+# the API serves this data set one day per request, too slow to retrieve a decade.
+rule build_entsoe_actual_generation:
+    input:
+        lambda w: sorted(
+            glob.glob(
+                f"data/entsoe_actualgeneration/{w.year}_*_ActualGenerationOutputPerGenerationUnit_16.1.A_r3.csv"
+            )
+        ),
+    output:
+        resources("entsoe_actual_generation_{year}.csv"),
+    log:
+        logs("build_entsoe_actual_generation_{year}.log"),
+    threads: 1
+    resources:
+        mem_mb=8000,
+    params:
+        carriers=config_provider("conventional", "unavailability", "carriers"),
+    message:
+        "Extracting actual output per generation unit for {wildcards.year}"
+    script:
+        scripts("build_entsoe_actual_generation.py")
+
+
+rule build_conventional_unavailability:
+    input:
+        unpack(input_entsoe_unavailability),
+    output:
+        resources("conventional_unavailability.csv"),
+    log:
+        logs("build_conventional_unavailability.log"),
+    benchmark:
+        benchmarks("build_conventional_unavailability")
+    threads: 1
+    resources:
+        mem_mb=6000,
+    params:
+        unavailability=config_provider("conventional", "unavailability"),
+        countries=config_provider("countries"),
+        years=unavailability_years,
+        snapshots=config_provider("snapshots"),
+        static=lambda w: {
+            carrier: config_provider("conventional", carrier, "p_max_pu", default="")(
+                w
+            )
+            for carrier in config_provider(
+                "conventional", "unavailability", "carriers"
+            )(w)
+        },
+    message:
+        "Building availability of conventional generators from ENTSO-E outages"
+    script:
+        scripts("build_conventional_unavailability.py")
+
+
 def input_base_network(w):
     base_network = config_provider("electricity", "base_network")(w)
     source = config_provider("data", "osm", "source")(w)
@@ -859,13 +960,18 @@ def input_conventional(w):
         *config_provider("electricity", "conventional_carriers")(w),
         *config_provider("electricity", "extendable_carriers", "Generator")(w),
     ]
-    return {
+    inputs = {
         f"conventional_{carrier}_{attr}": fn
         for carrier, d in config_provider("conventional", default={})(w).items()
         if carrier in carriers
         for attr, fn in d.items()
         if str(fn).startswith("data/")
     }
+    if config_provider("conventional", "unavailability", "enable")(w):
+        inputs["conventional_unavailability"] = resources(
+            "conventional_unavailability.csv"
+        )
+    return inputs
 
 
 rule clean_osm_data:

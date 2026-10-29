@@ -19,7 +19,7 @@ The comparison with the historical data shows partially accurate, partially impr
 
 **Coal - Lignite fuel switch:** The model has a fuel switch from coal to lignite. This might result from non-captured subsidies for lignite and coal in the model. In order to fix the fuel switch from coal to lignite, a manual cost correction was added to the script `build_monthly_prices`.
 
-**Planned outages of nuclear power plants:** Planned outages of nuclear power plants are not captured in the model. This leads to a underestimated dispatch of nuclear power plants in winter and a overestimated dispatch in summer. This point is hard to fix, since the planned outages are not published in the ENTSO-E Transparency Platform.
+**Planned outages of nuclear power plants:** With a flat annual availability, planned outages of nuclear power plants are not captured in the model. This leads to a underestimated dispatch of nuclear power plants in winter and a overestimated dispatch in summer. Planned and forced outages are published on the ENTSO-E Transparency Platform (unavailability of production and generation units), and `conventional: unavailability` derives monthly or historical availabilities from them.
 
 **False classification of run-of-river power plants:** Some run-of-river power plants are classified as hydro power plants in the model. This leads to a general overestimation of the hydro power dispatch. In particular, Swedish hydro power plants are overestimated.
 

@@ -616,6 +616,39 @@ if (ENTSOE_DEMAND_DATA := dataset_version("entsoe_electricity_demand"))["source"
             copy2(input["csv"], output["csv"])
 
 
+if (ENTSOE_UNAVAILABILITY_DATA := dataset_version("entsoe_unavailability"))[
+    "source"
+] in ["build"]:
+
+    # One job per country and year: the API answers slowly (~15 s per page of 200 outages),
+    # so the jobs are what parallelises the download. `entsoe_api` lets a run cap the
+    # concurrent requests, e.g. `--resources entsoe_api=8`.
+    rule retrieve_entsoe_unavailability:
+        input:
+            powerplants=rules.retrieve_powerplants.output["powerplants"],
+        output:
+            outages=f"{ENTSOE_UNAVAILABILITY_DATA['folder']}"
+            + "/{country}/{year}_outages.csv",
+            capacity=f"{ENTSOE_UNAVAILABILITY_DATA['folder']}"
+            + "/{country}/{year}_capacity.csv",
+        log:
+            "logs/retrieve_entsoe_unavailability/{country}_{year}.log",
+        retries: 2
+        threads: 1
+        resources:
+            mem_mb=6000,
+            entsoe_api=1,
+        # The token is read from the environment inside the script, not passed as a param:
+        # Snakemake stores params in .snakemake/metadata and prints changed ones as a rerun
+        # reason, and a shell without the variable would re-trigger every download.
+        params:
+            carriers=config_provider("conventional", "unavailability", "carriers"),
+        message:
+            "Retrieving ENTSO-E outages and unit capacities for {wildcards.country} {wildcards.year}"
+        script:
+            scripts("retrieve_entsoe_unavailability.py")
+
+
 if (NESO_DEMAND_DATA := dataset_version("neso_electricity_demand"))["source"] in [
     "build"
 ]:
