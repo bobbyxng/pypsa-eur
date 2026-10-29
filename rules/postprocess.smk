@@ -355,6 +355,42 @@ rule plot_cop_profiles:
         scripts("plot_cop_profiles/plot_cop_profiles.py")
 
 
+def input_plot_conventional_unavailability(w):
+    files = {
+        "unavailability": resources("conventional_unavailability.csv"),
+        "powerplants": resources("powerplants.csv"),
+    }
+    # The static tables the profiles replace, shown as a last column for comparison.
+    for carrier in config_provider("conventional", "unavailability", "carriers")(w):
+        fn = config_provider("conventional", carrier, "p_max_pu", default="")(w)
+        if str(fn).startswith("data/"):
+            files[f"static_{carrier}"] = fn
+    return files
+
+
+# A leaf of the DAG: nothing consumes the figure, so requesting it reruns nothing upstream.
+rule plot_conventional_unavailability:
+    input:
+        unpack(input_plot_conventional_unavailability),
+    output:
+        plot=resources("figures/conventional_unavailability.pdf"),
+    log:
+        logs("plot_conventional_unavailability.log"),
+    benchmark:
+        benchmarks("plot_conventional_unavailability")
+    threads: 1
+    resources:
+        mem_mb=2000,
+    params:
+        unavailability=config_provider("conventional", "unavailability"),
+        carriers=config_provider("conventional", "unavailability", "carriers"),
+        snapshots=config_provider("snapshots"),
+    message:
+        "Plotting availability of conventional generators per country and month"
+    script:
+        scripts("plot_conventional_unavailability.py")
+
+
 rule plot_interactive_bus_balance:
     input:
         network=RESULTS + "networks/solved_{horizon}.nc",
