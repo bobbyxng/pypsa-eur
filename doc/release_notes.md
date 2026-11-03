@@ -6,6 +6,8 @@
 <!-- Upcoming Release -->
 <!-- ================= -->
 * Feature: Time-varying availability of conventional generators from outages reported on the ENTSO-E Transparency Platform (unavailability of production and generation units, 15.1.A-D), configured under `conventional: unavailability`. A new rule `retrieve_entsoe_unavailability` queries the API per country and year (needs `ENTSOE_API_TOKEN`), and `build_conventional_unavailability` turns the notices into either a monthly availability per country, averaged over `reference_periods` (`method: climatology`), or the availability of the modelled snapshots per power plant and country (`method: historical`). Countries without usable reports take the median of the others. `plot_conventional_unavailability` draws the profiles as a country-by-month heatmap next to the static values they replace. Captures the seasonal maintenance of nuclear plants listed under issues in the validation notes.
+
+* OSM network: The network comparison now also compares DC links and exports `links.csv`. Fix: AC-tagged relations are no longer imported as DC links, GW ratings are converted to MW, and incomplete DC links no longer affect converter voltage and capacity ([#2387](https://github.com/PyPSA/pypsa-eur/pull/2387)).
 * Fix: Per-country levels in `clustering: administrative: countries` are no longer ignored. Country keys directly under `clustering: administrative` remain supported ([#2210](https://github.com/PyPSA/pypsa-eur/pull/2210)).
 * Feature: `clustering: administrative: countries` also accepts NUTS codes of subregions (e.g. `DEA: 3`) to set a different administrative level within a country ([#2146](https://github.com/PyPSA/pypsa-eur/pull/2146)).
 
