@@ -1862,6 +1862,20 @@ if __name__ == "__main__":
 
     df_routes_relation = _import_routes_relation(path_routes_relation)
 
+    # Member ways of explicit DC relations (frequency=0). Their cable/line ways often carry no
+    # frequency tag of their own, default to 50 Hz below and would be imported as an AC line next
+    # to the DC link the relation becomes: the Great Belt link (relation/5487095) appeared as a
+    # 400 kV AC line Funen-Zealand, AC-coupling DK1 and DK2. They are dropped together with the
+    # member ways of AC relations.
+    is_dc_relation = _clean_frequency(df_routes_relation["frequency"]) == "0"
+    dc_relation_ways = {
+        f"way/{member['ref']}"
+        for members in df_routes_relation.loc[is_dc_relation, "members"]
+        if isinstance(members, list)
+        for member in members
+        if member.get("type") == "way"
+    }
+
     df_lines_cables_relation = df_routes_relation.copy()
     df_lines_cables_relation = _drop_duplicate_lines(df_lines_cables_relation)
     df_lines_cables_relation["under_construction"] = (
@@ -1952,7 +1966,7 @@ if __name__ == "__main__":
         )
     ]
     ways_to_replace = pd.Series(
-        itertools.chain(*df_lines_cables_relation["contains"])
+        itertools.chain(*df_lines_cables_relation["contains"], dc_relation_ways)
     ).unique()
 
     df_lines_cables_relation.rename(columns={"id": "line_id"}, inplace=True)
@@ -1996,6 +2010,13 @@ if __name__ == "__main__":
     logger.info(
         f"Dropping {len_before - len_after} OSM ways (AC lines and cables) for their parent OSM relations."
     )
+    dc_ways_dropped = sorted(connection_type.index.intersection(list(dc_relation_ways)))
+    if dc_ways_dropped:
+        logger.info(
+            f"Of these, {len(dc_ways_dropped)} are member ways of DC relations (imported as "
+            + "links instead): "
+            + "; ".join(dc_ways_dropped)
+        )
 
     # Cleaning process
     df_lines["voltage"] = _clean_voltage(df_lines["voltage"])
