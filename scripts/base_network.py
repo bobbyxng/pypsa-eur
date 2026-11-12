@@ -30,7 +30,7 @@ import shapely.prepared
 import shapely.wkt
 import yaml
 from packaging.version import Version, parse
-from scipy.sparse import csgraph
+from scipy.sparse import coo_matrix, csgraph
 from scipy.spatial import KDTree
 from shapely.geometry import Point
 from tqdm import tqdm
@@ -424,9 +424,27 @@ def _remove_dangling_branches(branches, buses):
 
 
 def _remove_unconnected_components(network, threshold=6):
-    _, labels = csgraph.connected_components(
-        network.adjacency_matrix(return_dataframe=False), directed=False
+    # Sparse adjacency built from the branches directly: pypsa's adjacency_matrix fills a dense
+    # bus x bus DataFrame first, even with return_dataframe=False, i.e. 8 bytes per bus pair.
+    # A build down to 30 kV has ~52,000 buses: ~22 GB, OOM-killed (15 GB with ~44,000 buses).
+    buses = network.buses.index
+    pos = pd.Series(np.arange(len(buses)), index=buses)
+    branches = pd.concat(
+        [
+            network.lines[["bus0", "bus1"]],
+            network.links[["bus0", "bus1"]],
+            network.transformers[["bus0", "bus1"]],
+        ]
     )
+    branches = branches[branches.bus0.isin(buses) & branches.bus1.isin(buses)]
+    adjacency = coo_matrix(
+        (
+            np.ones(len(branches)),
+            (pos[branches.bus0].values, pos[branches.bus1].values),
+        ),
+        shape=(len(buses), len(buses)),
+    )
+    _, labels = csgraph.connected_components(adjacency, directed=False)
     component = pd.Series(labels, index=network.buses.index)
 
     component_sizes = component.value_counts()
