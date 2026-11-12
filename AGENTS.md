@@ -216,6 +216,32 @@ anything non-trivial.
 - **`clean_osm_data.py` `_clean_date`: dashes stripped from both ends, years outside 1-9999
   set to NaT.** Irish 38-110 kV assets tagged `start_date=mid-2000s` became the year -2000,
   which crashed the GeoJSON export (`'int' object has no attribute 'year'`). Same PR candidate.
+- **`clean_osm_data.py`: member ways of DC relations (`frequency=0`) are dropped** like those of
+  AC relations. Their ways often have no frequency tag, defaulted to 50 Hz and came in as an AC
+  line next to the DC link: the Great Belt link (`relation/5487095`) appeared as a 400 kV AC line
+  Funen-Zealand (`merged_way/207775098-400+2`), AC-coupling DK1 and DK2. The prebuilt archive 0.7
+  does not have the duplicate. Same PR candidate.
+- **`build_osm_network.py`: voltage-dependent station tolerance** (`osm_network_release:
+  station_tolerance: {high_voltage, low_voltage, threshold}`; unset = one 500 m `BUS_TOL` for
+  all, as upstream). With one 500 m buffer and single-linkage union, a build down to 30 kV
+  chained sub-220 kV substations into stations up to 16.7 km wide (Upper Austria, Berlin
+  8.6 km with 110 and 380 kV), with transformers between all their voltages and two 380 kV
+  substations joined through 110 kV ones. With a threshold, `_create_station_seeds` forms
+  stations in two passes (>= threshold with `high_voltage`, below with `low_voltage`), then
+  `_attach_low_to_high_voltage_stations` merges each low-voltage station touching a
+  high-voltage one into the nearest (by PoI) only; high-voltage polygons stay untouched, so the
+  >= threshold grid does not depend on `low_voltage` (cutting attached stations out of a second
+  high-voltage station instead left holes and cost AT 7% of its >= 220 kV line-km). AT/DE test
+  (500/200 m, threshold 220): largest station 5.1 km, 96-97% of sub-220 kV line-km reach a
+  hub (500 m everywhere: 98%); smaller `low_voltage` leaves line ends unconnected, 300 m chains
+  again. `_extend_lines_to_buses` now draws lines that the station cut leaves empty (lying
+  inside two adjacent stations) straight between their buses instead of crashing. PR candidate.
+- **`base_network.py` `_remove_unconnected_components`: sparse adjacency from the branches**
+  instead of `n.adjacency_matrix()`, which fills a dense bus x bus DataFrame even with
+  `return_dataframe=False` (8 bytes per bus pair). A build down to 30 kV has ~52,000 buses:
+  ~22 GB, OOM-killed (the first 30 kV build peaked at 15 GB). Now ~1 GB. Same components, same
+  result. `simplify_network` and `cluster_network` still call `adjacency_matrix`; fine at
+  transmission-only bus counts, a wall again if they ever see a sub-220 kV network. PR candidate.
 - **`prepare_osm_network_release.py` memory:** the 30 kV `europe-partitioning` build was
   OOM-killed (26.5 GB) while *loading* `base.nc`: xarray decodes the line-geometry WKT strings
   into a fixed-width array as wide as the longest one (~95,000 characters x 47,100 lines
