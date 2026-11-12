@@ -1057,6 +1057,9 @@ rule build_osm_network:
         line_types=config_provider("lines", "types"),
         under_construction=config_provider("osm_network_release", "under_construction"),
         remove_after=config_provider("osm_network_release", "remove_after"),
+        station_tolerance=config_provider(
+            "osm_network_release", "station_tolerance", default={}
+        ),
     message:
         "Building OSM network"
     script:

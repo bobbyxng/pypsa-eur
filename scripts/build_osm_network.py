@@ -606,6 +606,111 @@ def _merge_lines_over_virtual_buses(
     return lines_merged, buses_merged
 
 
+def _aggregate_seeds(seeds, tol, distance_crs=DISTANCE_CRS, geo_crs=GEO_CRS):
+    """
+    Buffer seeds by `tol` and union overlapping buffers into stations.
+
+    Each station is named after, and takes the PoI of, its largest buffered seed; stations
+    whose largest seed is a point get the PoI of the station polygon.
+
+    Parameters
+    ----------
+        - seeds (GeoDataFrame): Indexed by bus_id, with geometry (polygon or point) and, for
+          polygon seeds, a "poi" column.
+        - tol (float): Buffer radius in metres.
+
+    Returns
+    -------
+        GeoDataFrame: One row per station with the representative "bus_id" (not necessarily
+        unique: a seed may touch two stations), the station polygon as geometry, "area", "poi"
+        and "tol".
+    """
+    buffers = seeds.copy()
+    buffers["geometry"] = (
+        buffers.geometry.to_crs(distance_crs).buffer(tol).to_crs(geo_crs)
+    )
+    buffers["area"] = buffers.to_crs(distance_crs).area
+
+    union = buffers.union_all()
+    parts = list(getattr(union, "geoms", [union]))
+    agg = gpd.GeoDataFrame(geometry=parts, crs=geo_crs)
+
+    # full spatial join, the largest seed represents the station
+    agg = gpd.sjoin(agg, buffers, how="left", predicate="intersects").reset_index()
+    agg = agg.loc[agg.groupby("index")["area"].idxmax()]
+    agg = agg.drop(columns=["index"]).reset_index(drop=True)
+
+    # Fill missing PoI with the PoI of the polygon
+    poi_missing = agg["poi"].isna()
+    agg.loc[poi_missing, "poi"] = (
+        agg.loc[poi_missing, "geometry"]
+        .to_crs(distance_crs)
+        .apply(lambda polygon: polylabel(polygon, tolerance=tol / 2))
+        .to_crs(geo_crs)
+    )
+    agg["tol"] = tol
+    return agg
+
+
+def _attach_low_to_high_voltage_stations(
+    stations_hv, stations_lv, distance_crs=DISTANCE_CRS
+):
+    """
+    Merge every low-voltage station that touches a high-voltage station into exactly one of them.
+
+    The nearest high-voltage station (by PoI) wins when several are touched, so a chain of
+    low-voltage substations can never join two high-voltage stations. Station polygons are kept
+    disjoint, so a bus cannot fall into two stations later on.
+
+    Returns
+    -------
+        GeoDataFrame: All stations (high-voltage ones enlarged, unattached low-voltage ones kept).
+    """
+    hits = gpd.sjoin(
+        stations_lv[["geometry"]].rename_axis("lv").reset_index(),
+        stations_hv[["geometry"]].rename_axis("hv").reset_index(),
+        how="inner",
+        predicate="intersects",
+    ).reset_index(drop=True)  # sjoin repeats the left index for every match
+    if hits.empty:
+        return pd.concat([stations_hv, stations_lv], ignore_index=True)
+
+    lv_centroid = stations_lv.geometry.to_crs(distance_crs).centroid
+    hv_poi = gpd.GeoSeries(stations_hv["poi"], crs=stations_hv.crs).to_crs(distance_crs)
+    hits["distance"] = [
+        lv_centroid.loc[lv].distance(hv_poi.loc[hv])
+        for lv, hv in zip(hits["lv"], hits["hv"])
+    ]
+    target = hits.loc[hits.groupby("lv")["distance"].idxmin()].set_index("lv")["hv"]
+
+    # The high-voltage stations keep their own polygons untouched, so the >= threshold grid does
+    # not depend on the low-voltage tolerance. An attached station only adds its part outside
+    # every high-voltage station (cutting it out of a second high-voltage station instead left
+    # holes there, and that station's line ends fell into them: AT lost 15% of its >= 220 kV
+    # line-km in the AT/DE test).
+    stations_hv_original = stations_hv.copy()
+    stations_hv = stations_hv.copy()
+    for hv, lvs in target.groupby(target):
+        others = hits.loc[
+            hits["lv"].isin(lvs.index) & (hits["hv"] != hv), "hv"
+        ].unique()
+        added = stations_lv.loc[lvs.index].geometry.union_all()
+        if len(others):
+            added = added.difference(
+                stations_hv_original.loc[others].geometry.union_all()
+            )
+        stations_hv.loc[hv, "geometry"] = stations_hv_original.loc[
+            hv, "geometry"
+        ].union(added)
+
+    logger.info(
+        f"Attached {len(target)} low-voltage stations to "
+        f"{target.nunique()} high-voltage stations; "
+        f"{len(stations_lv) - len(target)} low-voltage stations stay separate."
+    )
+    return pd.concat([stations_hv, stations_lv.drop(target.index)], ignore_index=True)
+
+
 def _create_station_seeds(
     buses,
     buses_polygon,
@@ -613,18 +718,31 @@ def _create_station_seeds(
     tol=BUS_TOL,
     distance_crs=DISTANCE_CRS,
     geo_crs=GEO_CRS,
+    tol_low_voltage=None,
+    voltage_threshold=None,
 ):
     """
     Creates aggregated station seeds (candidates) based on substation polygons and updates their country information.
 
+    With `voltage_threshold` unset, every polygon and bus is buffered by `tol` and overlapping
+    buffers form one station (single linkage). Below the transmission level substations are
+    close together, so this chains: in a build down to 30 kV, stations up to 17 km wide (Upper
+    Austria) and two 380 kV substations joined through 110 kV substations (Berlin), each with
+    transformers between all its voltages. With `voltage_threshold` set, stations form in two
+    passes: seeds at or above the threshold with `tol`, as in a transmission-only build; seeds
+    below it with `tol_low_voltage`; then each low-voltage station touching a high-voltage
+    station joins the nearest one (see `_attach_low_to_high_voltage_stations`).
+
     Parameters
     ----------
-        - buses (GeoDataFrame): GeoDataFrame containing bus information with columns "bus_id" and "geometry".
+        - buses (GeoDataFrame): GeoDataFrame containing bus information with columns "bus_id", "voltage" and "geometry".
         - buses_polygon (GeoDataFrame): GeoDataFrame containing bus polygon information with columns "bus_id" and "geometry".
         - country_shapes (GeoDataFrame): GeoDataFrame containing country shapes with a "name" column.
         - tol (float, optional): Tolerance for buffering geometries. Default is BUS_TOL.
         - distance_crs (CRS, optional): Coordinate reference system for distance calculations. Default is DISTANCE_CRS.
         - geo_crs (CRS, optional): Coordinate reference system for geographic calculations. Default is GEO_CRS.
+        - tol_low_voltage (float, optional): Buffer below `voltage_threshold`, metres.
+        - voltage_threshold (float, optional): Threshold in kV; None keeps one tolerance for all.
 
     Returns
     -------
@@ -639,58 +757,50 @@ def _create_station_seeds(
         & ~buses["bus_id"].str.startswith("relation/")
     ]
 
-    buses_buffer = gpd.GeoDataFrame(
+    seeds_points = gpd.GeoDataFrame(
         data=filtered_buses[columns], geometry="geometry"
     ).set_index("bus_id")
-    buses_buffer["geometry"] = (
-        buses_buffer["geometry"].to_crs(distance_crs).buffer(tol).to_crs(geo_crs)
-    )
-    buses_buffer["area"] = buses_buffer.to_crs(distance_crs).area
+    seeds_points["voltage"] = filtered_buses["voltage"].values
 
-    buses_polygon_buffer = gpd.GeoDataFrame(
+    seeds_polygons = gpd.GeoDataFrame(
         data=buses_polygon[columns], geometry="geometry"
     ).set_index("bus_id")
-    buses_polygon_buffer["geometry"] = (
-        buses_polygon_buffer["geometry"]
-        .to_crs(distance_crs)
-        .buffer(tol)
-        .to_crs(geo_crs)
-    )
-    buses_polygon_buffer["area"] = buses_polygon_buffer.to_crs(distance_crs).area
+    # Highest voltage of each substation polygon, from its buses ("way/123-110" -> "way/123")
+    polygon_voltage = buses.groupby(buses["bus_id"].str.split("-").str[0])[
+        "voltage"
+    ].max()
+    seeds_polygons["voltage"] = polygon_voltage.reindex(seeds_polygons.index).values
 
     # Find the pole of inaccessibility (PoI) for each polygon, the interior point most distant from a polygon's boundary
     # Garcia-Castellanos & Lombardo 2007
     # doi.org/10.1080/14702540801897809
-    buses_polygon_buffer["poi"] = (
+    seeds_polygons["poi"] = (
         buses_polygon.set_index("bus_id")["geometry"]
         .to_crs(distance_crs)
         .apply(lambda polygon: polylabel(polygon, tolerance=tol / 2))
         .to_crs(geo_crs)
     )
 
-    buses_all_buffer = pd.concat([buses_buffer, buses_polygon_buffer])
+    seeds = pd.concat([seeds_points, seeds_polygons])
 
+    if voltage_threshold is None:
+        buses_all_agg = _aggregate_seeds(seeds, tol, distance_crs, geo_crs)
+    else:
+        is_high = seeds["voltage"].fillna(0) >= voltage_threshold * 1e3
+        logger.info(
+            f"Stations from {is_high.sum()} seeds >= {voltage_threshold} kV ({tol} m) and "
+            f"{(~is_high).sum()} seeds below ({tol_low_voltage} m)."
+        )
+        stations_hv = _aggregate_seeds(seeds[is_high], tol, distance_crs, geo_crs)
+        stations_lv = _aggregate_seeds(
+            seeds[~is_high], tol_low_voltage, distance_crs, geo_crs
+        )
+        buses_all_agg = _attach_low_to_high_voltage_stations(
+            stations_hv, stations_lv, distance_crs
+        )
     buses_all_agg = gpd.GeoDataFrame(
-        geometry=[poly for poly in buses_all_buffer.union_all().geoms], crs=geo_crs
-    )
-
-    # full spatial join
-    buses_all_agg = gpd.sjoin(
-        buses_all_agg, buses_all_buffer, how="left", predicate="intersects"
-    ).reset_index()
-    max_area_idx = buses_all_agg.groupby("index")["area"].idxmax()
-    buses_all_agg = buses_all_agg.loc[max_area_idx]
-    buses_all_agg = buses_all_agg.drop(columns=["index"])
-    buses_all_agg.set_index("bus_id", inplace=True)
-
-    # Fill missing PoI with the PoI of the polygon
-    poi_missing = buses_all_agg["poi"].isna()
-    buses_all_agg.loc[poi_missing, "poi"] = (
-        buses_all_agg.loc[poi_missing, "geometry"]
-        .to_crs(distance_crs)
-        .apply(lambda polygon: polylabel(polygon, tolerance=tol / 2))
-        .to_crs(geo_crs)
-    )
+        buses_all_agg, geometry="geometry", crs=geo_crs
+    ).set_index("bus_id")
 
     # Update countries based on the PoI location:
     updated_country_mapping = gpd.sjoin_nearest(
@@ -719,11 +829,15 @@ def _create_station_seeds(
     buses_all_agg.set_index("bus_id", inplace=True)
     # Rename index name to station_id
     buses_all_agg.index.name = "station_id"
-    buses_all_agg.drop(columns=["area", "osm_identifier", "id_occurence"], inplace=True)
-
-    buses_all_agg["poi_perimeter"] = (
-        buses_all_agg["poi"].to_crs(distance_crs).buffer(tol / 2).to_crs(geo_crs)
+    buses_all_agg.drop(
+        columns=["area", "voltage", "osm_identifier", "id_occurence"], inplace=True
     )
+
+    poi = gpd.GeoSeries(buses_all_agg["poi"], crs=geo_crs).to_crs(distance_crs)
+    buses_all_agg["poi_perimeter"] = poi.buffer(buses_all_agg["tol"] / 2).to_crs(
+        geo_crs
+    )
+    buses_all_agg.drop(columns=["tol"], inplace=True)
 
     buses_all_agg.reset_index(inplace=True)
 
@@ -1125,10 +1239,29 @@ def _extend_lines_to_buses(connection, buses):
     if b_multi.any():
         lines_all = lines_all[~b_multi]
 
-    lines_all["geometry"] = lines_all.apply(
+    # A line lying entirely inside the polygons of two adjacent stations is cut away completely
+    # at their boundaries (seen with voltage-dependent station tolerances, Gelsenkirchen). It
+    # still connects the two stations: draw it straight between their bus points.
+    b_empty = lines_all["geometry"].apply(lambda x: x is None or x.is_empty)
+    if b_empty.any():
+        logger.info(
+            f"Drawing {b_empty.sum()} lines cut away inside their stations as straight "
+            + "lines between their buses: "
+            + "; ".join(
+                lines_all.loc[b_empty]
+                .filter(["line_id", "link_id"])
+                .iloc[:, 0]
+                .astype(str)
+            )
+        )
+    lines_all.loc[b_empty, "geometry"] = lines_all.loc[b_empty].apply(
+        lambda row: LineString([row["bus0_point"], row["bus1_point"]]), axis=1
+    )
+    b_extend = ~b_empty
+    lines_all.loc[b_extend, "geometry"] = lines_all.loc[b_extend].apply(
         lambda row: _add_point_to_line(row["geometry"], row["bus0_point"]), axis=1
     )
-    lines_all["geometry"] = lines_all.apply(
+    lines_all.loc[b_extend, "geometry"] = lines_all.loc[b_extend].apply(
         lambda row: _add_point_to_line(row["geometry"], row["bus1_point"]), axis=1
     )
 
@@ -1650,8 +1783,10 @@ def build_network(
     line_types,
     under_construction,
     remove_after,
+    station_tolerance=None,
 ):
     logger.info("Reading input data.")
+    station_tolerance = station_tolerance or {}
 
     # Buses
     buses = gpd.read_file(inputs["substations"])
@@ -1705,7 +1840,14 @@ def build_network(
     lines, buses = _merge_lines_over_virtual_buses(lines, buses, merged_lines_map)
 
     # Create station seeds
-    stations = _create_station_seeds(buses, buses_polygon, country_shapes)
+    stations = _create_station_seeds(
+        buses,
+        buses_polygon,
+        country_shapes,
+        tol=station_tolerance.get("high_voltage", BUS_TOL),
+        tol_low_voltage=station_tolerance.get("low_voltage", BUS_TOL),
+        voltage_threshold=station_tolerance.get("threshold"),
+    )
     buses = _merge_buses_to_stations(buses, stations)
 
     # Round stations to 8 decimals to avoid floating point errors (e.g. voronoi creation)
@@ -1873,6 +2015,7 @@ if __name__ == "__main__":
     line_types = snakemake.params.line_types
     under_construction = snakemake.params.under_construction
     remove_after = snakemake.params.remove_after
+    station_tolerance = snakemake.params.get("station_tolerance")
 
     # Build network
     buses, converters, lines, links, transformers, stations_polygon, buses_polygon = (
@@ -1883,6 +2026,7 @@ if __name__ == "__main__":
             line_types,
             under_construction,
             remove_after,
+            station_tolerance,
         )
     )
 
