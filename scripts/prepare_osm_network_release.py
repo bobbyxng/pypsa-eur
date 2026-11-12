@@ -8,10 +8,12 @@ import re
 from pathlib import Path
 
 import geopandas as gpd
+import netCDF4
 import numpy as np
 import pandas as pd
 import pydeck as pdk
 import pypsa
+import xarray as xr
 from shapely import wkt
 from shapely.geometry import LineString, Polygon
 
@@ -23,7 +25,11 @@ logger = logging.getLogger(__name__)
 
 DISTANCE_CRS = "EPSG:3035"
 GEO_CRS = "EPSG:4326"
-LINE_SIMPLIFY = 30  # meters
+# meters; default, overridden by osm_network_release: map_line_simplify
+LINE_SIMPLIFY = 30
+# Decimals kept for map coordinates: 5 decimals of a degree is ~1 m, invisible on the map, while
+# full float precision makes the embedded JSON about three times larger.
+COORD_DECIMALS = 5
 STATIONS_SIMPLIFY = 100  # meters
 BUSES_POLYGON_SIMPLIFY = 5  # meters
 BUSES_COLUMNS = [
@@ -91,6 +97,38 @@ ROUNDING_DECIMALS = {
     "x": 6,
     "b": 8,
 }
+
+
+def load_network_lean(path: str) -> pypsa.Network:
+    """
+    Load a network whose geometry columns hold long WKT strings, without padding them.
+
+    xarray decodes a netCDF string variable into a fixed-width array as wide as its longest
+    string. Line geometries at full OSM resolution reach ~95,000 characters, so 47,100 lines
+    take ~18 GB that way (the europe-partitioning build down to 30 kV was OOM-killed while
+    loading). The `*_geometry` variables are therefore dropped from the xarray load and read
+    with netCDF4, which returns them as variable-length Python strings. `shapes` is left to
+    pypsa: it is a GeoDataFrame whose WKT pypsa parses itself, and it has only a few rows.
+    """
+    with netCDF4.Dataset(path) as nc:
+        geometry_vars = [
+            v
+            for v in nc.variables
+            if v.endswith("_geometry") and v != "shapes_geometry"
+        ]
+        geometries = {}
+        for var in geometry_vars:
+            list_name = var[: -len("_geometry")]
+            index = nc.variables[f"{list_name}_i"][:]
+            geometries[list_name] = pd.Series(nc.variables[var][:], index=index)
+
+    with xr.open_dataset(path, drop_variables=geometry_vars) as ds:
+        n = pypsa.Network()
+        n.import_from_netcdf(ds.load())
+    for list_name, geometry in geometries.items():
+        static = getattr(n, list_name)
+        static["geometry"] = geometry.reindex(static.index).fillna("")
+    return n
 
 
 def export_clean_csv(
@@ -161,7 +199,10 @@ def linestring_to_coords(linestring: LineString) -> list[list[float]]:
         List of [longitude, latitude] coordinate pairs.
 
     """
-    return [[coord[0], coord[1]] for coord in linestring.coords]
+    return [
+        [round(coord[0], COORD_DECIMALS), round(coord[1], COORD_DECIMALS)]
+        for coord in linestring.coords
+    ]
 
 
 def polygon_to_coords(polygon: Polygon) -> list[list[float]]:
@@ -179,7 +220,10 @@ def polygon_to_coords(polygon: Polygon) -> list[list[float]]:
         List of [longitude, latitude] coordinate pairs from exterior ring.
 
     """
-    return [[coord[0], coord[1]] for coord in polygon.exterior.coords]
+    return [
+        [round(coord[0], COORD_DECIMALS), round(coord[1], COORD_DECIMALS)]
+        for coord in polygon.exterior.coords
+    ]
 
 
 def get_line_colors(voltages: pd.Series) -> list:
@@ -1250,9 +1294,13 @@ if __name__ == "__main__":
     # Params and import
     line_types = snakemake.params.line_types
     release_version = snakemake.params.release_version
-    n = pypsa.Network(snakemake.input.base_network)
+    n = load_network_lean(snakemake.input.base_network)
     include_polygons = snakemake.params.include_polygons
     export = snakemake.params.export
+    # Simplification tolerance of line shapes on the map only (metres). Networks built from low
+    # voltage levels (e.g. down to 30 kV) have far more lines, and the map's embedded JSON then
+    # exhausts memory at the default 30 m.
+    line_simplify = snakemake.params.get("map_line_simplify") or LINE_SIMPLIFY
 
     out_buses = snakemake.output.buses if export else ""
     out_lines = snakemake.output.lines if export else ""
@@ -1409,7 +1457,10 @@ if __name__ == "__main__":
     lines["geometry"] = lines["geometry"].apply(wkt.loads)
     lines = gpd.GeoDataFrame(lines, geometry="geometry", crs=GEO_CRS)
     lines = lines.to_crs(DISTANCE_CRS)
-    lines["geometry"] = lines["geometry"].simplify(LINE_SIMPLIFY)
+    logger.info(
+        f"Simplifying line shapes for the map with a tolerance of {line_simplify} m."
+    )
+    lines["geometry"] = lines["geometry"].simplify(line_simplify)
     lines = lines.to_crs(GEO_CRS)
     lines["path"] = lines["geometry"].apply(linestring_to_coords)
     lines["color"] = get_line_colors(lines["voltage"])
@@ -1531,9 +1582,11 @@ if __name__ == "__main__":
         )
 
     # Calculate center point for initial view
-    all_coords = [coord for path in lines["path"] for coord in path]
-    center_lon = sum(c[0] for c in all_coords) / len(all_coords)
-    center_lat = sum(c[1] for c in all_coords) / len(all_coords)
+    # From the bounds, not the mean of all coordinates: that list held every coordinate of every
+    # line in Python objects once more, a large share of the memory for big networks.
+    minx, miny, maxx, maxy = lines.total_bounds
+    center_lon = (minx + maxx) / 2
+    center_lat = (miny + maxy) / 2
 
     layers = [
         lines_layer,

@@ -88,6 +88,9 @@ rule prepare_osm_network_release:
     params:
         line_types=config["lines"]["types"],
         release_version=config_provider("osm_network_release", "release_version"),
+        map_line_simplify=config_provider(
+            "osm_network_release", "map_line_simplify", default=30
+        ),
         include_polygons=True,
         export=True,
     message:
