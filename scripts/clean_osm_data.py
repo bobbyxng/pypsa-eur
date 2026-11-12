@@ -314,12 +314,19 @@ def _clean_date(column):
     # Remove all remaining non-numeric characters except for dashes
     # Note: removed semicolons unless you have multi-date entries
     column = column.str.replace(r"[^0-9-]", "", regex=True)
+    # Dashes left at either end are not part of a date: "mid-2000s" would otherwise become
+    # "-2000", i.e. the year minus 2000 (Irish 38-110 kV assets, OSM way/519825467).
+    column = column.str.strip("-")
 
     # Replace empty strings with NaN before datetime conversion
     column = column.replace("", np.nan)
 
     # Convert to datetime (keeps NaT for invalid/missing dates)
     column = pd.to_datetime(column, errors="coerce", format="mixed")
+
+    # Years Python's datetime cannot hold (outside 1-9999) reach the GeoJSON writer as plain
+    # integers and crash it ("'int' object has no attribute 'year'"); no grid asset has one.
+    column = column.where(column.dt.year.between(1, 9999))
 
     # Return as datetime64, NOT string
     return column
@@ -1890,6 +1897,21 @@ if __name__ == "__main__":
         columns=["voltage_original", "cleaned", "circuits_original", "split_elements"],
         inplace=True,
     )
+
+    # A route relation whose members are only nodes (no way member, so Overpass returns no
+    # member geometry) cannot become a line, and _create_line would fail on the missing
+    # `geometry` column. Below 220 kV such relations occur (e.g. GB relation/18581906, 33 kV).
+    has_geometry = df_lines_cables_relation["members"].apply(
+        lambda members: (
+            isinstance(members, list) and any("geometry" in m for m in members)
+        )
+    )
+    if (~has_geometry).any():
+        logger.info(
+            f"Dropping {(~has_geometry).sum()} relations without any way member: "
+            + "; ".join(df_lines_cables_relation.loc[~has_geometry, "id"].astype(str))
+        )
+        df_lines_cables_relation = df_lines_cables_relation[has_geometry].copy()
 
     # Create geometries
     df_lines_cables_relation["components"] = df_lines_cables_relation.apply(
