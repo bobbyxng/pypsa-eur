@@ -4,9 +4,11 @@
 # pypsa-eur (bobbyxng fork) — Agent Guide
 
 This is a fork of [PyPSA-Eur](https://github.com/PyPSA/pypsa-eur) (upstream), on branch
-`resilient-islands`, currently based on upstream `master` as of **2026-09-14**, which includes
-the streamlined-workflow restructure ([#1838](https://github.com/PyPSA/pypsa-eur/pull/1838)).
-Pinned deliberately at that merge, not continuously tracking `master`. `origin` points at this fork
+`resilient-islands`, currently based on upstream release **v2026.09.0** (2026-09-25, merge base
+`c8209014`), which includes the streamlined-workflow restructure
+([#1838](https://github.com/PyPSA/pypsa-eur/pull/1838)). Pinned deliberately at that release, not
+continuously tracking `master`; single upstream fixes needed earlier are cherry-picked and listed
+under "Fork-specific changes" below. `origin` points at this fork
 (`git@github.com:bobbyxng/pypsa-eur.git`); `upstream` points at `PyPSA/pypsa-eur.git` for
 whenever a future release is deliberately adopted. This submodule is driven from the parent
 [PyPSARO](../../../README.md) repo — see that repo's `AGENTS.md`/`MEMORY.md` for the actual
@@ -199,6 +201,30 @@ anything non-trivial.
   ends 2021). The `historical` method maps ENTSO-E units to power plants through
   `data/entsoe_unit_mapping.csv` (empty so far) plus ppm's own ENTSO-E codes. Tests:
   `test/test_build_conventional_unavailability.py`.
+- **Cherry-picked from upstream ahead of the base:** [#2387](https://github.com/PyPSA/pypsa-eur/pull/2387)
+  (`d02406c4`, OSM network: AC-tagged relations no longer imported as DC links, GW ratings
+  converted to MW, Overpass errors and timeouts handled, DC links in `make_network_comparison`).
+  Needed for PyPSARO's `europe-partitioning` build, which builds the OSM network from raw data
+  (`data: osm: source: build`) down to 30 kV. Only the release-note line for #2387 was taken;
+  the other upstream notes in that hunk belong to commits not on this branch. On the next
+  deliberate upstream update this commit is already contained and drops out.
+- **`clean_osm_data.py`: route relations without a way member are dropped** before
+  `_create_line`. Below 220 kV OSM has relations whose members are only nodes (GB
+  `relation/18581906`, 33 kV), which crashed the build with `KeyError: ['geometry']`. Not yet
+  upstream; a candidate for a PR, and on the next upstream update check whether upstream fixed it
+  differently.
+- **`clean_osm_data.py` `_clean_date`: dashes stripped from both ends, years outside 1-9999
+  set to NaT.** Irish 38-110 kV assets tagged `start_date=mid-2000s` became the year -2000,
+  which crashed the GeoJSON export (`'int' object has no attribute 'year'`). Same PR candidate.
+- **`prepare_osm_network_release.py` memory:** the 30 kV `europe-partitioning` build was
+  OOM-killed (26.5 GB) while *loading* `base.nc`: xarray decodes the line-geometry WKT strings
+  into a fixed-width array as wide as the longest one (~95,000 characters x 47,100 lines
+  ~ 18 GB). `load_network_lean` reads the `*_geometry` variables (except `shapes`) with netCDF4
+  instead: 0.8 GB, 2 s; the whole job now runs in ~35 s. Any other script that loads a network
+  with full-resolution OSM geometries will hit the same wall. Smaller map changes alongside:
+  line-shape simplification on the map is configurable (`osm_network_release:
+  map_line_simplify`, default 30 m = upstream), map coordinates are rounded to 5 decimals
+  (~1 m), and the view centre comes from the bounds. The CSV exports are unchanged.
 - **Custom data versions** (`data/custom_versions.csv`, the soft-fork route of
   `doc/data_sources.md`): extra rows appended to `data/versions.csv` through
   `data.version_files` in a run's config, so upstream's table stays untouched. Currently one
