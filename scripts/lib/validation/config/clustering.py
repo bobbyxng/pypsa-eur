@@ -151,7 +151,7 @@ class ClusteringConfig(BaseModel):
     )
     exact_busshapes: bool = Field(
         False,
-        description="With `mode: custom_busshapes`: cut the bus regions along the custom shapes (Voronoi cells clipped per shape in `base_network`, buses assigned per country in `cluster_network`, as for administrative regions), so the clustered regions -- and load, renewable potentials and maps built on them -- follow the shapes exactly. A shape without a bus is merged into the nearest shape of its country. The shapes need `name` and `country` columns and should cover the country shapes. False: upstream behaviour, whole country-level Voronoi cells merged by bus location (median 15% area mismatch on the PyPSARO outage islands).",
+        description="With `mode: custom_busshapes`: cut the bus regions along the custom shapes (Voronoi cells clipped per shape in `base_network`, buses assigned per country in `cluster_network`, as for administrative regions), so the clustered regions -- and load, renewable potentials and maps built on them -- follow the shapes exactly. A shape without a bus gets a virtual one at its representative point (connected only by what attaches later, e.g. a transmission project). The shapes need `name` and `country` columns and should cover the country shapes. False: upstream behaviour, whole country-level Voronoi cells merged by bus location (median 15% area mismatch on the PyPSARO outage islands).",
     )
     administrative: _AdministrativeConfig = Field(
         default_factory=_AdministrativeConfig,

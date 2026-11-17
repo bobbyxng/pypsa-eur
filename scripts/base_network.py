@@ -1496,9 +1496,11 @@ def build_custom_admin_shapes(
     country-level Voronoi cells by bus location: on the PyPSARO outage islands the
     clustered regions missed the shapes by a median 15% of their area, up to 138%.
 
-    A shape without any bus cannot become a node. It is merged into the nearest shape of
-    its country (logged), not dropped: the administrative path drops detached empty
-    regions, which would leave a hole in the regions (Gotland, Shetland).
+    A shape without any bus gets one (`<name> virtual`, at its centroid if inside,
+    logged) so that it still becomes a node: Crete's own grid is 150 kV only and its HVDC
+    link is not in OSM. The bus is connected only by what later attaches to it (a
+    transmission project landing there); the administrative path would instead drop a
+    detached empty region and leave a hole.
     """
     shapes = gpd.read_file(custom_busshapes)
     missing = {"name", "country"} - set(shapes.columns)
@@ -1513,34 +1515,46 @@ def build_custom_admin_shapes(
     if uncovered:
         raise ValueError(f"{custom_busshapes} has no shapes for {uncovered}")
 
-    buses = n.buses[["x", "y", "country"]].copy()
-    buses = gpd.GeoDataFrame(
-        buses, geometry=gpd.points_from_xy(buses.x, buses.y), crs=n.crs
-    )
-    joined = gpd.sjoin(buses, shapes, how="inner", predicate="within")
-    joined = joined[joined.country_left == joined.country_right]
-    shapes["substations"] = (
-        joined.groupby("admin").size().reindex(shapes.index, fill_value=0)
-    )
+    def count_buses():
+        buses = gpd.GeoDataFrame(
+            n.buses[["country"]],
+            geometry=gpd.points_from_xy(n.buses.x, n.buses.y),
+            crs=n.crs,
+        )
+        joined = gpd.sjoin(buses, shapes, how="inner", predicate="within")
+        joined = joined[joined.country_left == joined.country_right]
+        return joined.groupby("admin").size().reindex(shapes.index, fill_value=0)
+
+    empty = shapes.index[count_buses() == 0]
+    if len(empty):
+        # the centroid if it lies inside, so a project landing anywhere central connects
+        # (pypsa-eur joins a project end to a bus within 0.4 deg: Crete's representative
+        # point lay 0.52 deg from Ariadne's Damasta converter, its centroid 0.1)
+        centroid = shapes.loc[empty].to_crs(epsg=3035).centroid.to_crs(n.crs)
+        inside = centroid.within(shapes.loc[empty].geometry)
+        points = centroid.where(inside, shapes.loc[empty].representative_point())
+        names = [f"{name} virtual" for name in empty]
+        n.add(
+            "Bus",
+            names,
+            x=points.x.values,
+            y=points.y.values,
+            v_nom=380.0,
+            carrier="AC",
+            country=shapes.loc[empty, "country"].values,
+            symbol="Substation",
+            under_construction=False,
+            tags="virtual",
+            onshore_bus=True,
+            substation_lv=True,
+            substation_off=False,
+        )
+        logger.warning(
+            f"Custom bus shapes without a bus got a virtual one: {list(empty)}. It is "
+            "connected only by what attaches to it later (a transmission project)."
+        )
+    shapes["substations"] = count_buses()
     shapes["contains"] = [[name] for name in shapes.index]
-
-    metric = shapes.to_crs(epsg=3035)
-    for name in shapes.index[shapes.substations == 0]:
-        same = metric[
-            (metric.country == metric.at[name, "country"]) & (shapes.substations > 0)
-        ]
-        if same.empty:
-            raise ValueError(
-                f"{name}: no shape with buses in its country to merge into"
-            )
-        target = same.distance(metric.at[name, "geometry"]).idxmin()
-        logger.warning(f"Custom bus shape {name} has no bus; merged into {target}.")
-        shapes.at[target, "geometry"] = shapes.loc[[target, name]].union_all()
-        metric.at[target, "geometry"] = metric.loc[[target, name]].union_all()
-        shapes.at[target, "contains"] = shapes.at[target, "contains"] + [name]
-        shapes = shapes.drop(name)
-        metric = metric.drop(name)
-
     shapes["parent"] = shapes.country
     logger.info(f"Bus regions cut along {len(shapes)} custom bus shapes.")
     return shapes[["country", "parent", "contains", "substations", "geometry"]]

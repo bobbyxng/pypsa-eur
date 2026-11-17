@@ -265,14 +265,21 @@ anything non-trivial.
   (`selection`; near-optimal balanced and medoid as options) within `size_bounds`
   [0.75, 1.33] x mean. The least cut drifts to a bound, so the bounds set the balance;
   Litgrid's [0.5, 1.5] is the sensitivity (Spain 17/17/7/7 GW, Berlin alone). Snapped islands rebalanced back into the
-  bounds (`lau_respect_bounds`); separate land masses below `size_bounds[0]` x the country's
-  mean island come on top of k (Balearics). Needs `pymetis` and `unidecode`.
-  A pre-run reads `islands.geojson` (copied to `data/busshapes/`) with `clustering: mode:
-  custom_busshapes` and `exact_busshapes: true`: `base_network` then cuts the bus regions
+  bounds (`lau_respect_bounds`). No island spans a sea crossing: a land mass across the sea
+  is its own island if it holds >= `separate_land_mass_min_gw` and the model has a link to it
+  (>= 220 kV bus, DC landing, or a link in `data/transmission_projects/aro`), else it joins the
+  nearest island (Gotland, Shetland, Zeeuws-Vlaanderen); below `size_bounds[0]` x the country's
+  mean island it comes on top of k (Balearics, Corsica, Crete, Sicily). Needs `pymetis` and
+  `unidecode`. `build_island_partition` (only defined with `aro.partition.export`) copies
+  `islands.geojson` to that path; a pre-run reads it through `clustering:
+  custom_busshapes_file`, with `mode: custom_busshapes` and `exact_busshapes: true`: `base_network` then cuts the bus regions
   along the islands (`build_custom_admin_shapes`), and `simplify_network`/`cluster_network`
   treat them like administrative regions (stubs removed within them, buses mapped per
   country), so the clustered regions equal the islands. Upstream `custom_busshapes` merges
-  whole country-level Voronoi cells by bus location instead (median 15% area mismatch).
+  whole country-level Voronoi cells by bus location instead (median 15% area mismatch). An
+  island without a bus gets a virtual one at its centroid (Crete, whose only link at or above
+  220 kV, the Attica-Crete HVDC Ariadne, is missing from OSM and added through
+  `transmission_projects.include.aro`).
 - **`prepare_osm_network_release.py` memory:** the 30 kV `europe-partitioning` build was
   OOM-killed (26.5 GB) while *loading* `base.nc`: xarray decodes the line-geometry WKT strings
   into a fixed-width array as wide as the longest one (~95,000 characters x 47,100 lines
