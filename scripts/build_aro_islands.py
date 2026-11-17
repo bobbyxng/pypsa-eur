@@ -25,8 +25,11 @@ One pass per country:
    pieces and made contiguous (each area keeps the piece holding its hub). The country outline
    is made "dry" (inland holes filled, water narrower than ~2 km closed): rivers never form
    borders.
-5. Separate land masses (no AC link to the mainland, a bus at or above the threshold or a DC
-   converter landing, at least `separate_land_mass_km2`) are islands of their own, counted within k only if they hold
+5. Separate land masses (across the sea from the mainland, whatever the voltage of the
+   crossing: no island spans one; at least `separate_land_mass_km2` and
+   `separate_land_mass_min_gw`, and a link the model has -- a bus at or above the threshold,
+   a DC landing or a link in `data/transmission_projects/aro`; others join the nearest
+   island) are islands of their own, counted within k only if they hold
    at least `size_bounds[0]` x the country's mean island (East Denmark), on top of k if
    smaller (Balearics).
 6. Neighbours: supply areas sharing more than `border_min_m` of border; link weight = capacity of
@@ -754,6 +757,37 @@ if __name__ == "__main__":
     loads = LoadGrid(load_points)
     say(f"buses below {EHV:g} kV: {len(sub)}")
 
+    # land pieces of the dry outline (water narrower than ~2 km closed), largest first
+    land = sorted(getattr(shape, "geoms", [shape]), key=lambda g: g.area, reverse=True)
+    pieces = gpd.GeoDataFrame(
+        {"piece": range(len(land))},
+        geometry=[g.buffer(cfg["land_mass_buffer_m"]) for g in land],
+        crs=CRS,
+    )
+    piece_of = (
+        gpd.sjoin(cb[["geometry"]], pieces, predicate="within")
+        .groupby(level=0)["piece"]
+        .min()
+        .reindex(cb.index, fill_value=-1)
+    )
+    # no island spans a sea crossing from the main piece, whatever its voltage: the copper
+    # plate would hide the weakest link there is (Crete hangs on one 150 kV cable to the
+    # Peloponnese, Sicily on the 380 kV Messina crossing, and both have run separated from
+    # the mainland). The island end of a crossing below the threshold feeds the island like a
+    # hub. Crossings between islands (Mallorca-Menorca) keep an archipelago together; water
+    # narrower than ~2 km is land already (`water_closing_m`)
+    p0, p1 = lines.bus0.map(piece_of), lines.bus1.map(piece_of)
+    sea_crossing = (p0 >= 0) & (p1 >= 0) & (p0 != p1) & ((p0 == 0) | (p1 == 0))
+    sea_cable = sea_crossing & (lines.voltage < EHV)
+    cable_landing = set(lines.bus0[sea_cable & (p0 != 0)]) | set(
+        lines.bus1[sea_cable & (p1 != 0)]
+    )
+    if sea_crossing.any():
+        say(
+            f"sea crossings from the main land piece: {int(sea_crossing.sum())} lines, "
+            f"{int(sea_cable.sum())} below {EHV:g} kV"
+        )
+
     # ---- 1 graph
     ids = set(sub.index)
     l = lines[
@@ -761,6 +795,7 @@ if __name__ == "__main__":
         & lines.bus0.isin(ids)
         & lines.bus1.isin(ids)
         & (lines.bus0 != lines.bus1)
+        & ~sea_cable
     ]
     tr = t[t.bus0.isin(ids) & t.bus1.isin(ids)]
     G = nx.Graph()
@@ -780,7 +815,7 @@ if __name__ == "__main__":
     # a DC converter's AC side below the threshold feeds the network like a transformer from
     # it: without it Corsica (90 kV, fed only by SACOI) had no hub and its buses went to the
     # nearest French hub across the sea, merging it into the Marseille island
-    landing = set(conv.bus0) | set(conv.bus1)
+    landing = set(conv.bus0) | set(conv.bus1) | cable_landing
     landing = {x for x in landing if x in ids}
     hub_bus = sorted(
         set(t.bus1[t.bus0.isin(ehv_ids) & t.bus1.isin(ids)])
@@ -910,21 +945,31 @@ if __name__ == "__main__":
     aload_all.index = area_shp["area"]
     aload_all = aload_all.reindex(atoms_all).fillna(0)
 
-    # ---- 4 separate land masses: AC graph at ALL voltages (a 380 kV cable keeps Sicily
-    # attached); off the main land piece, a bus at or above the threshold or a DC landing
-    # (both are model buses: Corsica's SACOI converter survives a >= 220 kV build), large
-    # enough. Smaller land masses stay with the supply area they were assigned to.
+    # ---- 4 separate land masses: AC graph at all voltages without the sea crossings from
+    # the main piece; off the main land piece, large enough and with at least
+    # `separate_land_mass_min_gw` of peak. Smaller ones (Gotland 0.13 GW, Shetland 0.04 GW)
+    # join the nearest island with the supply areas off the main body.
     GA = nx.Graph()
     GA.add_nodes_from(cb.index)
-    lall = lines[lines.bus0.isin(cb.index) & lines.bus1.isin(cb.index)]
+    lall = lines[lines.bus0.isin(cb.index) & lines.bus1.isin(cb.index) & ~sea_crossing]
     GA.add_edges_from(zip(lall.bus0, lall.bus1))
     tall = t[t.bus0.isin(cb.index) & t.bus1.isin(cb.index)]
     GA.add_edges_from(zip(tall.bus0, tall.bus1))
-    land = sorted(getattr(shape, "geoms", [shape]), key=lambda g: g.area, reverse=True)
-    on_main = cb.geometry.within(land[0].buffer(cfg["land_mass_buffer_m"]))
-    sep_comp = {}
+    on_main = piece_of.eq(0)
+    hub_area = {bb: hub_names[hub_site[bb]] for bb in hub_bus}
+    sep_comp, too_small, no_link = {}, [], []
+    conv_landing = set(conv.bus0) | set(conv.bus1)
+    added = pd.read_csv(snakemake.input.added_links, index_col=0)
+    project_ends = gpd.GeoSeries(
+        gpd.points_from_xy(
+            pd.concat([added.x0, added.x1]), pd.concat([added.y0, added.y1])
+        ),
+        crs=4326,
+    ).to_crs(CRS)
     for ci, comp in enumerate(nx.connected_components(GA)):
         comp = list(comp)
+        if (~on_main[comp]).mean() <= 0.5:
+            continue
         km2 = (
             cb.loc[comp]
             .geometry.union_all()
@@ -932,13 +977,36 @@ if __name__ == "__main__":
             .area
             / 1e6
         )
-        if (
-            (~on_main[comp]).mean() > 0.5
-            and ((cb.loc[comp, "voltage"] >= EHV).any() or landing.intersection(comp))
-            and km2 >= cfg["separate_land_mass_km2"]
+        gw = aload_all[sorted({hub_area[bb] for bb in comp if bb in hub_area})].sum()
+        gw *= peak_gw
+        if km2 < cfg["separate_land_mass_km2"] or not gw:
+            continue
+        if gw < cfg["separate_land_mass_min_gw"]:
+            too_small.append(f"{gw:.2f}")
+            continue
+        # an island needs a link the model has (a bus at or above the threshold, a DC
+        # landing, a link added in `data/transmission_projects/aro`), or it is cut off:
+        # Zeeuws-Vlaanderen hangs on 150 kV cables under the Western Scheldt only
+        on_piece = pieces[pieces.piece.isin(set(piece_of[comp]) - {-1})].union_all()
+        if not (
+            (cb.loc[comp, "voltage"] >= EHV).any()
+            or conv_landing.intersection(comp)
+            or project_ends.within(on_piece).any()
         ):
-            for bb in comp:
-                sep_comp[bb] = ci
+            no_link.append(f"{gw:.2f}")
+            continue
+        for bb in comp:
+            sep_comp[bb] = ci
+    if too_small:
+        say(
+            f"land masses below {cfg['separate_land_mass_min_gw']:g} GW joining the nearest "
+            f"island: {len(too_small)} ({', '.join(too_small)} GW)"
+        )
+    if no_link:
+        say(
+            f"land masses without a link in the model (>= {EHV:g} kV, DC, added project) "
+            f"joining the nearest island: {len(no_link)} ({', '.join(no_link)} GW)"
+        )
     separate = {
         hub_names[hub_site[bb]]: sep_comp[bb] for bb in hub_bus if bb in sep_comp
     }

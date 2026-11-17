@@ -474,6 +474,7 @@ rule build_aro_islands:
         lines=resources("osm/release/lines.csv"),
         transformers=resources("osm/release/transformers.csv"),
         converters=resources("osm/release/converters.csv"),
+        added_links="data/transmission_projects/aro/new_links.csv",
         country_shapes=resources("country_shapes.geojson"),
         nuts3_shapes=resources("nuts3_shapes.geojson"),
         raster=rules.retrieve_electricity_demand_energy_atlas.output["tif"],

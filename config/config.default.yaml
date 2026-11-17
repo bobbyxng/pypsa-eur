@@ -1580,6 +1580,7 @@ aro:
     - 1.33
     voltage_threshold: 220.0
     separate_land_mass_km2: 50.0
+    separate_land_mass_min_gw: 0.25
     snap_to_lau: true
     lau_respect_bounds: true
     border_min_m: 200.0

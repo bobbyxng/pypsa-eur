@@ -189,7 +189,12 @@ class AroPartitionConfig(ConfigModel, extra="forbid"):
     )
     separate_land_mass_km2: float = Field(
         50.0,
-        description="A land mass without an AC link to the mainland becomes its own island only if it covers at least this area and has a bus at or above `voltage_threshold` or a DC converter landing (Corsica, fed only by SACOI). It counts within k if it holds at least `size_bounds[0]` x the country's mean island (East Denmark), else it comes on top (Balearics).",
+        description="A land mass across the sea from the mainland (water wider than ~2 km; no island spans a sea crossing, whatever its voltage: Crete's 150 kV cable, Sicily's 380 kV Messina crossing) becomes its own island only if it covers at least this area, holds at least `separate_land_mass_min_gw` and has a link the model represents (a bus at or above `voltage_threshold`, a DC landing, or a link in `data/transmission_projects/aro`: Crete's Ariadne); otherwise it joins the nearest island (Zeeuws-Vlaanderen, on 150 kV cables only). It counts within k if it holds at least `size_bounds[0]` x the country's mean island (East Denmark), else it comes on top (Balearics, Corsica, Crete, Sicily).",
+    )
+    separate_land_mass_min_gw: float = Field(
+        0.25,
+        ge=0.0,
+        description="Peak (GW) a land mass needs to be its own island; smaller ones join the nearest island of their country (Gotland 0.13 GW, Shetland 0.04 GW). Corsica (0.64 GW) stays separate.",
     )
     snap_to_lau: bool = Field(
         True,
