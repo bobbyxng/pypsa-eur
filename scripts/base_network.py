@@ -1482,6 +1482,70 @@ def merge_regions_recursive(
     return admin_shapes
 
 
+def build_custom_admin_shapes(
+    n: pypsa.Network,
+    custom_busshapes: str,
+) -> gpd.GeoDataFrame:
+    """
+    Use custom bus shapes as the administrative regions the bus regions are cut along
+    (`clustering: mode: custom_busshapes` with `exact_busshapes: true`).
+
+    The Voronoi cells of the buses are then clipped per shape and buses are assigned per
+    country, so the clustered regions -- and with them load, renewable potentials and
+    every map -- follow the shapes exactly. Without it, `custom_busshapes` merges whole
+    country-level Voronoi cells by bus location: on the PyPSARO outage islands the
+    clustered regions missed the shapes by a median 15% of their area, up to 138%.
+
+    A shape without any bus cannot become a node. It is merged into the nearest shape of
+    its country (logged), not dropped: the administrative path drops detached empty
+    regions, which would leave a hole in the regions (Gotland, Shetland).
+    """
+    shapes = gpd.read_file(custom_busshapes)
+    missing = {"name", "country"} - set(shapes.columns)
+    if missing:
+        raise ValueError(f"{custom_busshapes} lacks the column(s) {sorted(missing)}")
+    shapes = shapes[shapes.country.isin(n.buses.country.unique())]
+    shapes = shapes.to_crs(n.crs).set_index("name")[["country", "geometry"]]
+    shapes.index.name = "admin"
+    if not shapes.index.is_unique:
+        raise ValueError(f"{custom_busshapes}: names are not unique")
+    uncovered = sorted(set(n.buses.country.dropna()) - set(shapes.country) - {""})
+    if uncovered:
+        raise ValueError(f"{custom_busshapes} has no shapes for {uncovered}")
+
+    buses = n.buses[["x", "y", "country"]].copy()
+    buses = gpd.GeoDataFrame(
+        buses, geometry=gpd.points_from_xy(buses.x, buses.y), crs=n.crs
+    )
+    joined = gpd.sjoin(buses, shapes, how="inner", predicate="within")
+    joined = joined[joined.country_left == joined.country_right]
+    shapes["substations"] = (
+        joined.groupby("admin").size().reindex(shapes.index, fill_value=0)
+    )
+    shapes["contains"] = [[name] for name in shapes.index]
+
+    metric = shapes.to_crs(epsg=3035)
+    for name in shapes.index[shapes.substations == 0]:
+        same = metric[
+            (metric.country == metric.at[name, "country"]) & (shapes.substations > 0)
+        ]
+        if same.empty:
+            raise ValueError(
+                f"{name}: no shape with buses in its country to merge into"
+            )
+        target = same.distance(metric.at[name, "geometry"]).idxmin()
+        logger.warning(f"Custom bus shape {name} has no bus; merged into {target}.")
+        shapes.at[target, "geometry"] = shapes.loc[[target, name]].union_all()
+        metric.at[target, "geometry"] = metric.loc[[target, name]].union_all()
+        shapes.at[target, "contains"] = shapes.at[target, "contains"] + [name]
+        shapes = shapes.drop(name)
+        metric = metric.drop(name)
+
+    shapes["parent"] = shapes.country
+    logger.info(f"Bus regions cut along {len(shapes)} custom bus shapes.")
+    return shapes[["country", "parent", "contains", "substations", "geometry"]]
+
+
 def build_admin_shapes(
     n: pypsa.Network,
     nuts3_shapes: str,
@@ -1691,13 +1755,17 @@ if __name__ == "__main__":
         config,
     )
 
-    admin_shapes = build_admin_shapes(
-        n,
-        nuts3_shapes,
-        clustering,
-        admin_levels,
-        countries,
-    )
+    custom_busshapes = snakemake.input.get("custom_busshapes")
+    if clustering == "custom_busshapes" and custom_busshapes:
+        admin_shapes = build_custom_admin_shapes(n, custom_busshapes)
+    else:
+        admin_shapes = build_admin_shapes(
+            n,
+            nuts3_shapes,
+            clustering,
+            admin_levels,
+            countries,
+        )
 
     onshore_regions, offshore_regions, onshore_shapes, offshore_shapes = (
         build_bus_shapes(

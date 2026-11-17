@@ -698,6 +698,23 @@ if __name__ == "__main__":
                 busmap,
                 snakemake.input.admin_shapes,
             )
+        elif mode == "custom_busshapes" and params.exact_busshapes:
+            # the bus regions were cut along the shapes in base_network (admin_shapes are
+            # the shapes): map buses per country as for administrative regions, so the
+            # clustered regions equal the shapes
+            busmap = busmap_for_admin_regions(
+                n,
+                snakemake.input.admin_shapes,
+                params,
+            )
+            update_bus_coordinates(
+                n,
+                busmap,
+                snakemake.input.admin_shapes,
+            )
+            logger.info(
+                f"Clustered along the custom shapes in {snakemake.input.admin_shapes}"
+            )
         elif mode == "custom_busshapes":
             n.determine_network_topology()
             custom_shapes = gpd.read_file(snakemake.input.custom_busshapes)

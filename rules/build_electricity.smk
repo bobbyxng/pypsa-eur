@@ -178,9 +178,23 @@ def input_base_network(w):
     return inputs
 
 
+def input_exact_busshapes(w):
+    """The custom bus shapes, if the bus regions are to be cut along them."""
+    mode = config_provider("clustering", "mode", default="busmap")(w)
+    exact = config_provider("clustering", "exact_busshapes", default=False)(w)
+    if mode != "custom_busshapes" or not exact:
+        return {}
+    n_clusters = str(config_provider("clustering", "cluster_network", "n_clusters")(w))
+    base_network = config_provider("electricity", "base_network")(w)
+    return {
+        "custom_busshapes": f"data/busshapes/simplified_{n_clusters}_{base_network}.geojson"
+    }
+
+
 rule base_network:
     input:
         unpack(input_base_network),
+        unpack(input_exact_busshapes),
         nuts3_shapes=resources("nuts3_shapes.geojson"),
         country_shapes=resources("country_shapes.geojson"),
         offshore_shapes=resources("offshore_shapes.geojson"),
@@ -820,6 +834,7 @@ rule simplify_network:
         mode=config_provider("clustering", "mode"),
         administrative=config_provider("clustering", "administrative"),
         simplify_network=config_provider("clustering", "simplify_network"),
+        exact_busshapes=config_provider("clustering", "exact_busshapes", default=False),
         cluster_network=config_provider("clustering", "cluster_network"),
         aggregation_strategies=config_provider(
             "clustering", "aggregation_strategies", default={}
@@ -894,6 +909,7 @@ rule cluster_network:
     params:
         countries=config_provider("countries"),
         mode=config_provider("clustering", "mode"),
+        exact_busshapes=config_provider("clustering", "exact_busshapes", default=False),
         administrative=config_provider("clustering", "administrative"),
         cluster_network=config_provider("clustering", "cluster_network"),
         n_clusters=config_provider("clustering", "cluster_network", "n_clusters"),

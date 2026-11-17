@@ -267,6 +267,12 @@ anything non-trivial.
   Litgrid's [0.5, 1.5] is the sensitivity (Spain 17/17/7/7 GW, Berlin alone). Snapped islands rebalanced back into the
   bounds (`lau_respect_bounds`); separate land masses below `size_bounds[0]` x the country's
   mean island come on top of k (Balearics). Needs `pymetis` and `unidecode`.
+  A pre-run reads `islands.geojson` (copied to `data/busshapes/`) with `clustering: mode:
+  custom_busshapes` and `exact_busshapes: true`: `base_network` then cuts the bus regions
+  along the islands (`build_custom_admin_shapes`), and `simplify_network`/`cluster_network`
+  treat them like administrative regions (stubs removed within them, buses mapped per
+  country), so the clustered regions equal the islands. Upstream `custom_busshapes` merges
+  whole country-level Voronoi cells by bus location instead (median 15% area mismatch).
 - **`prepare_osm_network_release.py` memory:** the 30 kV `europe-partitioning` build was
   OOM-killed (26.5 GB) while *loading* `base.nc`: xarray decodes the line-geometry WKT strings
   into a fixed-width array as wide as the longest one (~95,000 characters x 47,100 lines

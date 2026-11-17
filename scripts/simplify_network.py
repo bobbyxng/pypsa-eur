@@ -457,7 +457,13 @@ if __name__ == "__main__":
     busmaps.append(simplify_links_map)
 
     if params.simplify_network["remove_stubs"]:
-        if params.mode == "administrative":
+        # with exact custom bus shapes the shapes are the admin regions: stubs stay inside
+        # them, or a stub bus alone in its shape (Gotland's and Shetland's DC landing) is
+        # merged across the border and the shape loses its node
+        exact_shapes = params.mode == "custom_busshapes" and params.get(
+            "exact_busshapes", False
+        )
+        if params.mode == "administrative" or exact_shapes:
             n, stub_map = remove_stubs_within_admin(
                 n, params.simplify_network, snakemake.input.admin_shapes
             )
