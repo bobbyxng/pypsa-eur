@@ -1565,6 +1565,42 @@ data:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#aro_cf
 aro:
+  partition:
+    exclude: []
+    peak_regions: nuts2
+    reference_country: DE
+    k_max: 14
+    k_min: 3
+    size_bounds:
+    - 0.75
+    - 1.33
+    voltage_threshold: 220.0
+    separate_land_mass_km2: 50.0
+    snap_to_lau: true
+    lau_respect_bounds: true
+    border_min_m: 200.0
+    water_closing_m: 1000.0
+    land_mass_buffer_m: 2000.0
+    unlinked_neighbour_weight: 0.01
+    lau_border_min_m: 50.0
+    enumeration_max: 20
+    selection: least_cut
+    near_optimal_tolerance: 0.05
+    metis_samples: 10000
+    metis_imbalance:
+    - 5
+    - 10
+    - 30
+    - 50
+    - 100
+    - 150
+    - 200
+    - 300
+    - 500
+    - 700
+    - 1000
+    metis_weight_perturbation: 0.5
+    seed: 0
   heat:
     enable: false
     mode: exogenous

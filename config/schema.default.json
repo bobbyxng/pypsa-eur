@@ -159,6 +159,164 @@
     "AroConfig": {
       "description": "Configuration for top-level `aro` settings.",
       "properties": {
+        "partition": {
+          "additionalProperties": false,
+          "description": "Outage-island partition (`build_aro_partition` and its per-country rules).\n\nPyPSARO's `memory: outage-island-partitioning` documents the method and every default here.\nThe per-country peaks are built from raw inputs by `build_aro_country_peaks`.",
+          "properties": {
+            "exclude": {
+              "default": [],
+              "description": "Countries left out of the partition. BA, ME and XK (no LAU, thin sub-transmission data in OSM) are no longer modelled at all, so nothing is left out by default.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "peak_regions": {
+              "default": "nuts2",
+              "description": "Regions the heat chain of `build_aro_country_peaks` runs on (independent of the islands). Heat-pump electricity is heat x 1/COP summed over regions, and cold regions have more heat and a lower COP, so one region per country understates the peak where climate varies (vs the NUTS1/2-clustered pre-run: FI -10%, GB -7%). NUTS2 is close to the islands' own resolution.",
+              "enum": [
+                "country",
+                "nuts1",
+                "nuts2",
+                "nuts3"
+              ],
+              "type": "string"
+            },
+            "reference_country": {
+              "default": "DE",
+              "description": "Country whose peak, divided by `k_max`, gives the target island size.",
+              "type": "string"
+            },
+            "k_max": {
+              "default": 14,
+              "description": "Islands per country at most; 14 = Germany's TSO black-start procurement regions.",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "k_min": {
+              "default": 3,
+              "description": "Islands per country at least (a regional structure beyond national self-sufficiency).",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "size_bounds": {
+              "default": [
+                0.75,
+                1.33
+              ],
+              "description": "Every island's load within these multiples of the country mean, checked on the grid-based islands. The least cut drifts to whichever bound has room, so the bounds decide the balance: with Litgrid's operator-planned range [0.5, 1.5] (0.49-1.52) Spain's mainland came out 17/17/7/7 GW, Switzerland 8/4/4 and Berlin stood alone at 0.50; [0.75, 1.33] (largest/smallest at most 1.77) gives comparable outage units with mostly coherent islands (2026-11-16). [0.5, 1.5] is the sensitivity: looser bounds let the least cut follow weak links.",
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "voltage_threshold": {
+              "default": 220.0,
+              "description": "kV; the outage cuts the grid at or above it, islands are formed from the grid below it.",
+              "type": "number"
+            },
+            "separate_land_mass_km2": {
+              "default": 50.0,
+              "description": "A land mass without an AC link to the mainland becomes its own island only if it covers at least this area and has a bus at or above `voltage_threshold` or a DC converter landing (Corsica, fed only by SACOI). It counts within k if it holds at least `size_bounds[0]` x the country's mean island (East Denmark), else it comes on top (Balearics).",
+              "type": "number"
+            },
+            "snap_to_lau": {
+              "default": true,
+              "description": "Snap the grid-based island outlines to municipal borders (GISCO LAU 2019); membership stays grid-based. Off: the grid-based outlines are the islands.",
+              "type": "boolean"
+            },
+            "lau_respect_bounds": {
+              "default": true,
+              "description": "After snapping, move border municipalities between neighbouring islands until every island is within `size_bounds` again (islands kept in one piece). Coarse municipalities otherwise shifted islands from within the bounds to 0.5-1.9 x mean (Slovenia, Latvia, Great Britain).",
+              "type": "boolean"
+            },
+            "border_min_m": {
+              "default": 200.0,
+              "description": "Supply areas are neighbours if they share more than this length of border (m).",
+              "type": "number"
+            },
+            "water_closing_m": {
+              "default": 1000.0,
+              "description": "The country outline is made 'dry' before partitioning: inland holes filled and water narrower than twice this (m) closed, so rivers, lakes and estuaries never form island borders. Wider sea straits stay open.",
+              "type": "number"
+            },
+            "land_mass_buffer_m": {
+              "default": 2000.0,
+              "description": "Buses within this distance (m) of the main land piece count as on the mainland when looking for separate land masses.",
+              "type": "number"
+            },
+            "unlinked_neighbour_weight": {
+              "default": 0.01,
+              "description": "Link weight of touching supply areas without a line below the threshold between them, as a share of the median link: nearly free to cut, so islands keep sub-transmission networks whole and only join separate ones where the size bounds require it.",
+              "type": "number"
+            },
+            "lau_border_min_m": {
+              "default": 50.0,
+              "description": "Municipalities are neighbours if they share more than this length of border (m); used to keep snapped islands in one piece.",
+              "type": "number"
+            },
+            "enumeration_max": {
+              "default": 20,
+              "description": "Enumerate every grouping exactly up to this many supply areas; METIS candidates above.",
+              "type": "integer"
+            },
+            "selection": {
+              "default": "least_cut",
+              "description": "Which grouping within the size bounds is taken. `least_cut`: the least cut, purely topological; balance comes from `size_bounds`. `near_optimal_balanced`: among the groupings within `near_optimal_tolerance` of the least cut, the one whose islands deviate least from the mean; with [0.5, 1.5] it fixed little at 5% (Spain 0.55-1.46) and at 10% glued electrically separate areas into one Spanish island (50% of its load outside its connected core), since candidates are checked for geographic contiguity only. `near_optimal_medoid`: the medoid of that set (the one moving the least load against the others); in Germany it halved how much load changes island between METIS seeds (5.6% vs 11.4%).",
+              "enum": [
+                "least_cut",
+                "near_optimal_balanced",
+                "near_optimal_medoid"
+              ],
+              "type": "string"
+            },
+            "near_optimal_tolerance": {
+              "default": 0.05,
+              "description": "Groupings within this share of the least cut count as equally good: `selection` picks the most balanced or the medoid among them, and either way the border uncertainty is reported, i.e. how much load they put in another island than the pick. In Germany the ten best groupings were within 2-6% of the least cut but put 10-27% of the load in other islands.",
+              "minimum": 0.0,
+              "type": "number"
+            },
+            "metis_samples": {
+              "default": 10000,
+              "description": "METIS runs with perturbed edge weights per country. Germany: the least cut stopped improving between 3,000 and 5,000 runs; 10,000 take ~4 min.",
+              "type": "integer"
+            },
+            "metis_imbalance": {
+              "default": [
+                5,
+                10,
+                30,
+                50,
+                100,
+                150,
+                200,
+                300,
+                500,
+                700,
+                1000
+              ],
+              "description": "METIS ufactor values cycled through the runs: the heaviest part may be at most (1 + ufactor/1000) x the mean. Strict values give balanced but costlier cuts, loose ones cheap but uneven cuts; the size bounds then filter.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "metis_weight_perturbation": {
+              "default": 0.5,
+              "description": "After one unperturbed run per imbalance value, every link weight is scaled by a uniform random factor in [1 - this, 1 + this], so the runs explore different near-optimal cuts.",
+              "exclusiveMaximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            "seed": {
+              "default": 0,
+              "description": "Seed of the weight perturbation and of METIS, for reproducible islands.",
+              "type": "integer"
+            }
+          }
+        },
         "heat": {
           "description": "Configuration for `aro.heat` settings.",
           "properties": {
@@ -495,6 +653,164 @@
           "description": "Annual financing rate for permanent emergency methanol inventory, assuming unused fuel retains its value. Reserve-only mode charges fuel_price times ready inventory times this rate (scaled to the model horizon), plus consumed fuel as post-event replenishment cost. No fuel purchases are allowed in dispatch.",
           "minimum": 0,
           "type": "number"
+        }
+      }
+    },
+    "AroPartitionConfig": {
+      "additionalProperties": false,
+      "description": "Outage-island partition (`build_aro_partition` and its per-country rules).\n\nPyPSARO's `memory: outage-island-partitioning` documents the method and every default here.\nThe per-country peaks are built from raw inputs by `build_aro_country_peaks`.",
+      "properties": {
+        "exclude": {
+          "default": [],
+          "description": "Countries left out of the partition. BA, ME and XK (no LAU, thin sub-transmission data in OSM) are no longer modelled at all, so nothing is left out by default.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "peak_regions": {
+          "default": "nuts2",
+          "description": "Regions the heat chain of `build_aro_country_peaks` runs on (independent of the islands). Heat-pump electricity is heat x 1/COP summed over regions, and cold regions have more heat and a lower COP, so one region per country understates the peak where climate varies (vs the NUTS1/2-clustered pre-run: FI -10%, GB -7%). NUTS2 is close to the islands' own resolution.",
+          "enum": [
+            "country",
+            "nuts1",
+            "nuts2",
+            "nuts3"
+          ],
+          "type": "string"
+        },
+        "reference_country": {
+          "default": "DE",
+          "description": "Country whose peak, divided by `k_max`, gives the target island size.",
+          "type": "string"
+        },
+        "k_max": {
+          "default": 14,
+          "description": "Islands per country at most; 14 = Germany's TSO black-start procurement regions.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "k_min": {
+          "default": 3,
+          "description": "Islands per country at least (a regional structure beyond national self-sufficiency).",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "size_bounds": {
+          "default": [
+            0.75,
+            1.33
+          ],
+          "description": "Every island's load within these multiples of the country mean, checked on the grid-based islands. The least cut drifts to whichever bound has room, so the bounds decide the balance: with Litgrid's operator-planned range [0.5, 1.5] (0.49-1.52) Spain's mainland came out 17/17/7/7 GW, Switzerland 8/4/4 and Berlin stood alone at 0.50; [0.75, 1.33] (largest/smallest at most 1.77) gives comparable outage units with mostly coherent islands (2026-11-16). [0.5, 1.5] is the sensitivity: looser bounds let the least cut follow weak links.",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "voltage_threshold": {
+          "default": 220.0,
+          "description": "kV; the outage cuts the grid at or above it, islands are formed from the grid below it.",
+          "type": "number"
+        },
+        "separate_land_mass_km2": {
+          "default": 50.0,
+          "description": "A land mass without an AC link to the mainland becomes its own island only if it covers at least this area and has a bus at or above `voltage_threshold` or a DC converter landing (Corsica, fed only by SACOI). It counts within k if it holds at least `size_bounds[0]` x the country's mean island (East Denmark), else it comes on top (Balearics).",
+          "type": "number"
+        },
+        "snap_to_lau": {
+          "default": true,
+          "description": "Snap the grid-based island outlines to municipal borders (GISCO LAU 2019); membership stays grid-based. Off: the grid-based outlines are the islands.",
+          "type": "boolean"
+        },
+        "lau_respect_bounds": {
+          "default": true,
+          "description": "After snapping, move border municipalities between neighbouring islands until every island is within `size_bounds` again (islands kept in one piece). Coarse municipalities otherwise shifted islands from within the bounds to 0.5-1.9 x mean (Slovenia, Latvia, Great Britain).",
+          "type": "boolean"
+        },
+        "border_min_m": {
+          "default": 200.0,
+          "description": "Supply areas are neighbours if they share more than this length of border (m).",
+          "type": "number"
+        },
+        "water_closing_m": {
+          "default": 1000.0,
+          "description": "The country outline is made 'dry' before partitioning: inland holes filled and water narrower than twice this (m) closed, so rivers, lakes and estuaries never form island borders. Wider sea straits stay open.",
+          "type": "number"
+        },
+        "land_mass_buffer_m": {
+          "default": 2000.0,
+          "description": "Buses within this distance (m) of the main land piece count as on the mainland when looking for separate land masses.",
+          "type": "number"
+        },
+        "unlinked_neighbour_weight": {
+          "default": 0.01,
+          "description": "Link weight of touching supply areas without a line below the threshold between them, as a share of the median link: nearly free to cut, so islands keep sub-transmission networks whole and only join separate ones where the size bounds require it.",
+          "type": "number"
+        },
+        "lau_border_min_m": {
+          "default": 50.0,
+          "description": "Municipalities are neighbours if they share more than this length of border (m); used to keep snapped islands in one piece.",
+          "type": "number"
+        },
+        "enumeration_max": {
+          "default": 20,
+          "description": "Enumerate every grouping exactly up to this many supply areas; METIS candidates above.",
+          "type": "integer"
+        },
+        "selection": {
+          "default": "least_cut",
+          "description": "Which grouping within the size bounds is taken. `least_cut`: the least cut, purely topological; balance comes from `size_bounds`. `near_optimal_balanced`: among the groupings within `near_optimal_tolerance` of the least cut, the one whose islands deviate least from the mean; with [0.5, 1.5] it fixed little at 5% (Spain 0.55-1.46) and at 10% glued electrically separate areas into one Spanish island (50% of its load outside its connected core), since candidates are checked for geographic contiguity only. `near_optimal_medoid`: the medoid of that set (the one moving the least load against the others); in Germany it halved how much load changes island between METIS seeds (5.6% vs 11.4%).",
+          "enum": [
+            "least_cut",
+            "near_optimal_balanced",
+            "near_optimal_medoid"
+          ],
+          "type": "string"
+        },
+        "near_optimal_tolerance": {
+          "default": 0.05,
+          "description": "Groupings within this share of the least cut count as equally good: `selection` picks the most balanced or the medoid among them, and either way the border uncertainty is reported, i.e. how much load they put in another island than the pick. In Germany the ten best groupings were within 2-6% of the least cut but put 10-27% of the load in other islands.",
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "metis_samples": {
+          "default": 10000,
+          "description": "METIS runs with perturbed edge weights per country. Germany: the least cut stopped improving between 3,000 and 5,000 runs; 10,000 take ~4 min.",
+          "type": "integer"
+        },
+        "metis_imbalance": {
+          "default": [
+            5,
+            10,
+            30,
+            50,
+            100,
+            150,
+            200,
+            300,
+            500,
+            700,
+            1000
+          ],
+          "description": "METIS ufactor values cycled through the runs: the heaviest part may be at most (1 + ufactor/1000) x the mean. Strict values give balanced but costlier cuts, loose ones cheap but uneven cuts; the size bounds then filter.",
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "metis_weight_perturbation": {
+          "default": 0.5,
+          "description": "After one unperturbed run per imbalance value, every link weight is scaled by a uniform random factor in [1 - this, 1 + this], so the runs explore different near-optimal cuts.",
+          "exclusiveMaximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "seed": {
+          "default": 0,
+          "description": "Seed of the weight perturbation and of METIS, for reproducible islands.",
+          "type": "integer"
         }
       }
     },
@@ -14969,6 +15285,164 @@
     "aro": {
       "description": "Configuration for top-level `aro` settings.",
       "properties": {
+        "partition": {
+          "additionalProperties": false,
+          "description": "Outage-island partition (`build_aro_partition` and its per-country rules).\n\nPyPSARO's `memory: outage-island-partitioning` documents the method and every default here.\nThe per-country peaks are built from raw inputs by `build_aro_country_peaks`.",
+          "properties": {
+            "exclude": {
+              "default": [],
+              "description": "Countries left out of the partition. BA, ME and XK (no LAU, thin sub-transmission data in OSM) are no longer modelled at all, so nothing is left out by default.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "peak_regions": {
+              "default": "nuts2",
+              "description": "Regions the heat chain of `build_aro_country_peaks` runs on (independent of the islands). Heat-pump electricity is heat x 1/COP summed over regions, and cold regions have more heat and a lower COP, so one region per country understates the peak where climate varies (vs the NUTS1/2-clustered pre-run: FI -10%, GB -7%). NUTS2 is close to the islands' own resolution.",
+              "enum": [
+                "country",
+                "nuts1",
+                "nuts2",
+                "nuts3"
+              ],
+              "type": "string"
+            },
+            "reference_country": {
+              "default": "DE",
+              "description": "Country whose peak, divided by `k_max`, gives the target island size.",
+              "type": "string"
+            },
+            "k_max": {
+              "default": 14,
+              "description": "Islands per country at most; 14 = Germany's TSO black-start procurement regions.",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "k_min": {
+              "default": 3,
+              "description": "Islands per country at least (a regional structure beyond national self-sufficiency).",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "size_bounds": {
+              "default": [
+                0.75,
+                1.33
+              ],
+              "description": "Every island's load within these multiples of the country mean, checked on the grid-based islands. The least cut drifts to whichever bound has room, so the bounds decide the balance: with Litgrid's operator-planned range [0.5, 1.5] (0.49-1.52) Spain's mainland came out 17/17/7/7 GW, Switzerland 8/4/4 and Berlin stood alone at 0.50; [0.75, 1.33] (largest/smallest at most 1.77) gives comparable outage units with mostly coherent islands (2026-11-16). [0.5, 1.5] is the sensitivity: looser bounds let the least cut follow weak links.",
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "voltage_threshold": {
+              "default": 220.0,
+              "description": "kV; the outage cuts the grid at or above it, islands are formed from the grid below it.",
+              "type": "number"
+            },
+            "separate_land_mass_km2": {
+              "default": 50.0,
+              "description": "A land mass without an AC link to the mainland becomes its own island only if it covers at least this area and has a bus at or above `voltage_threshold` or a DC converter landing (Corsica, fed only by SACOI). It counts within k if it holds at least `size_bounds[0]` x the country's mean island (East Denmark), else it comes on top (Balearics).",
+              "type": "number"
+            },
+            "snap_to_lau": {
+              "default": true,
+              "description": "Snap the grid-based island outlines to municipal borders (GISCO LAU 2019); membership stays grid-based. Off: the grid-based outlines are the islands.",
+              "type": "boolean"
+            },
+            "lau_respect_bounds": {
+              "default": true,
+              "description": "After snapping, move border municipalities between neighbouring islands until every island is within `size_bounds` again (islands kept in one piece). Coarse municipalities otherwise shifted islands from within the bounds to 0.5-1.9 x mean (Slovenia, Latvia, Great Britain).",
+              "type": "boolean"
+            },
+            "border_min_m": {
+              "default": 200.0,
+              "description": "Supply areas are neighbours if they share more than this length of border (m).",
+              "type": "number"
+            },
+            "water_closing_m": {
+              "default": 1000.0,
+              "description": "The country outline is made 'dry' before partitioning: inland holes filled and water narrower than twice this (m) closed, so rivers, lakes and estuaries never form island borders. Wider sea straits stay open.",
+              "type": "number"
+            },
+            "land_mass_buffer_m": {
+              "default": 2000.0,
+              "description": "Buses within this distance (m) of the main land piece count as on the mainland when looking for separate land masses.",
+              "type": "number"
+            },
+            "unlinked_neighbour_weight": {
+              "default": 0.01,
+              "description": "Link weight of touching supply areas without a line below the threshold between them, as a share of the median link: nearly free to cut, so islands keep sub-transmission networks whole and only join separate ones where the size bounds require it.",
+              "type": "number"
+            },
+            "lau_border_min_m": {
+              "default": 50.0,
+              "description": "Municipalities are neighbours if they share more than this length of border (m); used to keep snapped islands in one piece.",
+              "type": "number"
+            },
+            "enumeration_max": {
+              "default": 20,
+              "description": "Enumerate every grouping exactly up to this many supply areas; METIS candidates above.",
+              "type": "integer"
+            },
+            "selection": {
+              "default": "least_cut",
+              "description": "Which grouping within the size bounds is taken. `least_cut`: the least cut, purely topological; balance comes from `size_bounds`. `near_optimal_balanced`: among the groupings within `near_optimal_tolerance` of the least cut, the one whose islands deviate least from the mean; with [0.5, 1.5] it fixed little at 5% (Spain 0.55-1.46) and at 10% glued electrically separate areas into one Spanish island (50% of its load outside its connected core), since candidates are checked for geographic contiguity only. `near_optimal_medoid`: the medoid of that set (the one moving the least load against the others); in Germany it halved how much load changes island between METIS seeds (5.6% vs 11.4%).",
+              "enum": [
+                "least_cut",
+                "near_optimal_balanced",
+                "near_optimal_medoid"
+              ],
+              "type": "string"
+            },
+            "near_optimal_tolerance": {
+              "default": 0.05,
+              "description": "Groupings within this share of the least cut count as equally good: `selection` picks the most balanced or the medoid among them, and either way the border uncertainty is reported, i.e. how much load they put in another island than the pick. In Germany the ten best groupings were within 2-6% of the least cut but put 10-27% of the load in other islands.",
+              "minimum": 0.0,
+              "type": "number"
+            },
+            "metis_samples": {
+              "default": 10000,
+              "description": "METIS runs with perturbed edge weights per country. Germany: the least cut stopped improving between 3,000 and 5,000 runs; 10,000 take ~4 min.",
+              "type": "integer"
+            },
+            "metis_imbalance": {
+              "default": [
+                5,
+                10,
+                30,
+                50,
+                100,
+                150,
+                200,
+                300,
+                500,
+                700,
+                1000
+              ],
+              "description": "METIS ufactor values cycled through the runs: the heaviest part may be at most (1 + ufactor/1000) x the mean. Strict values give balanced but costlier cuts, loose ones cheap but uneven cuts; the size bounds then filter.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "metis_weight_perturbation": {
+              "default": 0.5,
+              "description": "After one unperturbed run per imbalance value, every link weight is scaled by a uniform random factor in [1 - this, 1 + this], so the runs explore different near-optimal cuts.",
+              "exclusiveMaximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            "seed": {
+              "default": 0,
+              "description": "Seed of the weight perturbation and of METIS, for reproducible islands.",
+              "type": "integer"
+            }
+          }
+        },
         "heat": {
           "description": "Configuration for `aro.heat` settings.",
           "properties": {

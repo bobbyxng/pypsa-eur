@@ -242,6 +242,31 @@ anything non-trivial.
   ~22 GB, OOM-killed (the first 30 kV build peaked at 15 GB). Now ~1 GB. Same components, same
   result. `simplify_network` and `cluster_network` still call `adjacency_matrix`; fine at
   transmission-only bus counts, a wall again if they ever see a sub-220 kV network. PR candidate.
+- **Outage-island partition** (`rules/aro.smk`: `build_aro_partition` collects the per-country
+  `build_aro_islands`, which in one pass sets k, builds the load grid, the islands, snaps them
+  to municipalities (toggle `aro.partition.snap_to_lau`) and runs the copperplate check; config
+  `aro.partition`). Ported from PyPSARO's
+  prototype (`~/projects/partition-test`, `memory: outage-island-partitioning` in the parent
+  repo) to run on a build with lower voltages (PyPSARO's `europe-partitioning` config); outputs
+  in `resources/<run>/aro_partition/`. Differences to the prototype: load spread as the model
+  spreads it (electricity as `build_electricity_demand_base`: Energy Atlas raster for EU27,
+  DESNZ for GB, NUTS3 GDP/population otherwise; heat by NUTS3 population; weighted by the
+  electricity and heat peaks) on 1 km points instead of NUTS3 0.6/0.4 through the 0.3 deg
+  population layout (which is itself only NUTS3 population spread by area); municipalities from
+  pypsa-eur's own `lau_regions` (GISCO LAU 2019) for every country instead of LAU 2021; no HVDC
+  way filter (fixed in `clean_osm_data`); no Litgrid comparison (stays in the prototype).
+  The per-country coincident peaks (electricity + electrical heat load, at the run's
+  `clustering.temporal` resolution) that set k and the load weights are built from raw inputs
+  by `build_aro_country_peaks`: upstream's heat rules reused via `use rule ... with:` on
+  NUTS2 regions (`aro.partition.peak_regions`; `build_aro_peaks_*`, outputs in `aro_partition/peaks/`), combined with
+  `prepare_aro_network`'s own heat functions. No network is clustered and no pre-run build is
+  read, so the partition is reproducible from scratch and never circular; its demand settings
+  must equal the pre-run's (PyPSARO's `pixi run check-partition-config`). Pick: least cut
+  (`selection`; near-optimal balanced and medoid as options) within `size_bounds`
+  [0.75, 1.33] x mean. The least cut drifts to a bound, so the bounds set the balance;
+  Litgrid's [0.5, 1.5] is the sensitivity (Spain 17/17/7/7 GW, Berlin alone). Snapped islands rebalanced back into the
+  bounds (`lau_respect_bounds`); separate land masses below `size_bounds[0]` x the country's
+  mean island come on top of k (Balearics). Needs `pymetis` and `unidecode`.
 - **`prepare_osm_network_release.py` memory:** the 30 kV `europe-partitioning` build was
   OOM-killed (26.5 GB) while *loading* `base.nc`: xarray decodes the line-geometry WKT strings
   into a fixed-width array as wide as the longest one (~95,000 characters x 47,100 lines
