@@ -6587,6 +6587,11 @@
               "description": "Whether to integrate the German network development plan dataset.",
               "type": "boolean"
             },
+            "aro": {
+              "default": false,
+              "description": "Whether to integrate the fork's links missing from OSM (`data/transmission_projects/aro`): the Attica-Crete HVDC (Ariadne, 1000 MW, in operation since 2025, status `completed`).",
+              "type": "boolean"
+            },
             "manual": {
               "default": true,
               "description": "Whether to integrate the manually added transmission projects. They are taken from the previously existing links_tyndp.csv file.",
@@ -7736,6 +7741,11 @@
         "nep": {
           "default": true,
           "description": "Whether to integrate the German network development plan dataset.",
+          "type": "boolean"
+        },
+        "aro": {
+          "default": false,
+          "description": "Whether to integrate the fork's links missing from OSM (`data/transmission_projects/aro`): the Attica-Crete HVDC (Ariadne, 1000 MW, in operation since 2025, status `completed`).",
           "type": "boolean"
         },
         "manual": {
@@ -11512,6 +11522,11 @@
             "nep": {
               "default": true,
               "description": "Whether to integrate the German network development plan dataset.",
+              "type": "boolean"
+            },
+            "aro": {
+              "default": false,
+              "description": "Whether to integrate the fork's links missing from OSM (`data/transmission_projects/aro`): the Attica-Crete HVDC (Ariadne, 1000 MW, in operation since 2025, status `completed`).",
               "type": "boolean"
             },
             "manual": {

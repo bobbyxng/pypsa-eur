@@ -26,6 +26,10 @@ class _IncludeConfig(ConfigModel):
         True,
         description="Whether to integrate the German network development plan dataset.",
     )
+    aro: bool = Field(
+        False,
+        description="Whether to integrate the fork's links missing from OSM (`data/transmission_projects/aro`): the Attica-Crete HVDC (Ariadne, 1000 MW, in operation since 2025, status `completed`).",
+    )
     manual: bool = Field(
         True,
         description="Whether to integrate the manually added transmission projects. They are taken from the previously existing links_tyndp.csv file.",

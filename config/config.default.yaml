@@ -484,6 +484,7 @@ transmission_projects:
   include:
     tyndp2020: true
     nep: true
+    aro: false
     manual: true
   skip:
   - upgraded_lines
