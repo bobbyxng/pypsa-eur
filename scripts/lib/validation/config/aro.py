@@ -155,6 +155,10 @@ class AroPartitionConfig(ConfigModel, extra="forbid"):
     The per-country peaks are built from raw inputs by `build_aro_country_peaks`.
     """
 
+    export: str | None = Field(
+        None,
+        description="Where `build_island_partition` writes the partition's `islands.geojson` for a pre-run to read (its `clustering.custom_busshapes_file`), e.g. ``data/busshapes/aro_islands.geojson``. Unset: no such rule, so a pre-run sharing the Snakefile never tries to build the partition itself.",
+    )
     exclude: list[str] = Field(
         [],
         description="Countries left out of the partition. BA, ME and XK (no LAU, thin sub-transmission data in OSM) are no longer modelled at all, so nothing is left out by default.",

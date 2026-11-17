@@ -1178,6 +1178,7 @@ costs:
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#clustering_cf
 clustering:
   mode: busmap
+  custom_busshapes_file:
   exact_busshapes: false
   administrative:
     level: 1
@@ -1570,6 +1571,7 @@ data:
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#aro_cf
 aro:
   partition:
+    export:
     exclude: []
     peak_regions: nuts2
     reference_country: DE

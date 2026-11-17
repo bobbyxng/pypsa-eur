@@ -178,17 +178,23 @@ def input_base_network(w):
     return inputs
 
 
+def custom_busshapes_path(w):
+    """`clustering.custom_busshapes_file`, else upstream's path from n_clusters and base_network."""
+    path = config_provider("clustering", "custom_busshapes_file", default=None)(w)
+    if path:
+        return path
+    n_clusters = str(config_provider("clustering", "cluster_network", "n_clusters")(w))
+    base_network = config_provider("electricity", "base_network")(w)
+    return f"data/busshapes/simplified_{n_clusters}_{base_network}.geojson"
+
+
 def input_exact_busshapes(w):
     """The custom bus shapes, if the bus regions are to be cut along them."""
     mode = config_provider("clustering", "mode", default="busmap")(w)
     exact = config_provider("clustering", "exact_busshapes", default=False)(w)
     if mode != "custom_busshapes" or not exact:
         return {}
-    n_clusters = str(config_provider("clustering", "cluster_network", "n_clusters")(w))
-    base_network = config_provider("electricity", "base_network")(w)
-    return {
-        "custom_busshapes": f"data/busshapes/simplified_{n_clusters}_{base_network}.geojson"
-    }
+    return {"custom_busshapes": custom_busshapes_path(w)}
 
 
 rule base_network:
@@ -863,10 +869,7 @@ def input_custom_busmap(w):
         custom_busmap = f"data/busmaps/simplified_{n_clusters_label}_{base_network}.csv"
 
     if mode == "custom_busshapes":
-        base_network = config_provider("electricity", "base_network")(w)
-        custom_busshapes = (
-            f"data/busshapes/simplified_{n_clusters_label}_{base_network}.geojson"
-        )
+        custom_busshapes = custom_busshapes_path(w)
 
     return {
         "custom_busmap": custom_busmap,

@@ -532,3 +532,22 @@ rule build_aro_partition:
         "Collecting the outage islands of all countries"
     script:
         scripts("build_aro_partition.py")
+
+
+# Hand-over to a pre-run: the partition's islands where the pre-run reads them
+# (`clustering.custom_busshapes_file`). Defined only in a run that sets `aro.partition.export`,
+# so a pre-run sharing this Snakefile never schedules the partition itself.
+if config["aro"]["partition"].get("export"):
+
+    rule build_island_partition:
+        input:
+            islands=resources("aro_partition/islands.geojson"),
+        output:
+            config["aro"]["partition"]["export"],
+        localrule: True
+        message:
+            "Writing the outage islands for the pre-run to {output}"
+        run:
+            import shutil
+
+            shutil.copyfile(input.islands, output[0])
