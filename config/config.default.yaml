@@ -492,6 +492,8 @@ transmission_projects:
   - under_construction
   - in_permitting
   - confirmed
+  exclude: []
+  replaces: {}
   new_link_capacity: zero
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#transformers_cf

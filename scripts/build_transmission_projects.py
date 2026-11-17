@@ -392,6 +392,7 @@ def add_projects(
     plan,
     status=["confirmed", "under construction"],
     skip=[],
+    exclude=(),
 ):
     lines_dict = get_project_files(path, skip=skip)
     for key, lines in lines_dict.items():
@@ -400,6 +401,7 @@ def add_projects(
         if isinstance(status, dict):
             status = status[plan]
         lines = lines.loc[lines.project_status.isin(status)]
+        lines = lines.drop(exclude, errors="ignore")
         if lines.empty:
             continue
         if key == "new_lines":
@@ -513,6 +515,7 @@ if __name__ == "__main__":
                 plan=project,
                 status=transmission_projects["status"],
                 skip=transmission_projects["skip"],
+                exclude=transmission_projects.get("exclude") or [],
             )
         )
     if not new_lines_df.empty:
@@ -539,6 +542,41 @@ if __name__ == "__main__":
         ).round(2)
         # set s_max_pu
         new_lines_df["s_max_pu"] = s_max_pu
+    # projects that replace an existing link (TYNDP lists SACOI3 as new, though it replaces
+    # SACOI2 on the same route; at 400 vs 300 MW the duplicate check keeps both): the
+    # existing link is removed, the project stays. Removed, not p_nom 0: a cross-border link
+    # at p_nom 0 would break the per-element flow pinning of the country runs (p0 / p_nom)
+    replaces = transmission_projects.get("replaces") or {}
+    retired = [
+        link
+        for project, links in replaces.items()
+        if project in new_links_df.index
+        for link in links
+    ]
+    missing = [
+        link
+        for links in replaces.values()
+        for link in links
+        if link not in n.links.index
+    ]
+    if missing:
+        raise ValueError(f"transmission_projects.replaces: no existing link {missing}")
+    if absent := [p for p in replaces if p not in new_links_df.index]:
+        logger.warning(
+            f"transmission_projects.replaces: {absent} not among the added projects; "
+            "the links they replace are kept"
+        )
+    if retired:
+        logger.info(f"Existing links replaced by projects, removed: {retired}")
+        adjust_links_df = pd.concat(
+            [
+                adjust_links_df,
+                pd.DataFrame({"remove": True}, index=retired),
+            ]
+        )
+        adjust_links_df = adjust_links_df[
+            ~adjust_links_df.index.duplicated(keep="last")
+        ]
     if not new_links_df.empty:
         # Add carrier types of lines and links
         new_links_df["carrier"] = "DC"

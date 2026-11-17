@@ -36,6 +36,11 @@ def attach_transmission_projects(
         elif "adjust_lines" in path.name:
             n.lines.update(df)
         elif "adjust_links" in path.name:
+            # links replaced by a project on the same route (`transmission_projects.replaces`)
+            if "remove" in df:
+                gone = df.index[df.pop("remove").eq(True)]
+                n.remove("Link", gone)
+                df = df.drop(gone)
             n.links.update(df)
 
 
