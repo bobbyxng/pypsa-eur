@@ -27,6 +27,7 @@ twin that exists only to produce the reference heat loads:
 
 import os
 
+import numpy as np
 import pandas as pd
 import pypsa
 import pytest
@@ -275,7 +276,17 @@ def test_metered_load_matches_add_heat(networks):
 
     got = aro.loads_t.p_set[nodes]
     base = composed.loads_t.p_set[nodes]
-    expected = base - mean_baseline[nodes]
+    # Per country the baseline is taken from the nodes in proportion to their metered load
+    # (memory: aro-electric-heat-subtraction), written out independently of the script.
+    country = aro.buses.country.reindex(aro.loads.bus[nodes]).set_axis(nodes)
+    national = base.T.groupby(country).sum().T
+    removed = mean_baseline[nodes].T.groupby(country).sum().T
+    keep = 1 - removed / national
+    expected = base * keep[country[nodes]].to_numpy()
+    assert (got >= -TOL).all().all(), "a metered electricity load went negative"
+    assert np.allclose(
+        got.T.groupby(country).sum().T, national - removed, rtol=TOL, atol=1e-6
+    ), "the national amount subtracted is no longer upstream's"
     deviation = (got - expected).abs().max().max()
     assert deviation <= TOL * max(base.abs().max().max(), 1.0), (
         f"metered load deviates from (input load - mean-aggregated baseline) by "
@@ -477,3 +488,61 @@ def test_h2_turbines_reject_unknown_technology():
     n = _h2_network(["N0"])
     with pytest.raises(ValueError, match="cost table does not carry"):
         add_h2_turbines(n, H2_TURBINE_COSTS, {"technologies": ["OCGT", "Allam"]})
+
+
+# ---------------------------------------------------------------------------------------------
+# Existing electric heat subtraction (`subtract_existing_electric_heat`), synthetic
+# ---------------------------------------------------------------------------------------------
+
+
+def test_electric_heat_subtraction_never_negative_and_keeps_national_amount():
+    """
+    A node whose population share exceeds its metered share no longer goes negative.
+
+    memory: aro-electric-heat-subtraction
+    """
+    from scripts.prepare_aro_network import subtract_existing_electric_heat
+
+    t = pd.date_range("2013-01-01", periods=3, freq="3h")
+    metered = pd.DataFrame(
+        {"A1": [90.0, 80, 70], "A2": [10.0, 10, 10], "B1": [50.0, 50, 50]}, index=t
+    )
+    # Node-wise subtraction would leave A2 at 10 - 30 = -20.
+    baseline = pd.DataFrame(
+        {"A1": [5.0, 5, 5], "A2": [30.0, 20, 10], "B1": [0.0, 0, 0]}, index=t
+    )
+    country = pd.Series({"A1": "A", "A2": "A", "B1": "B"})
+    got = subtract_existing_electric_heat(metered, baseline, country)
+
+    assert (got >= 0).all().all()
+    pd.testing.assert_series_equal(
+        got[["A1", "A2"]].sum(axis=1),
+        metered[["A1", "A2"]].sum(axis=1) - baseline[["A1", "A2"]].sum(axis=1),
+    )
+    # Spread by metered share: A1 keeps 90 % of A's net load in the first snapshot.
+    assert got.at[t[0], "A1"] == pytest.approx(0.9 * (100 - 35))
+    pd.testing.assert_series_equal(got["B1"], metered["B1"])
+
+
+def test_electric_heat_subtraction_caps_at_national_load():
+    """A snapshot whose baseline exceeds the national load removes the load, no more."""
+    from scripts.prepare_aro_network import subtract_existing_electric_heat
+
+    t = pd.date_range("2013-01-01", periods=200, freq="3h")
+    metered = pd.DataFrame({"A1": 10.0, "A2": 30.0}, index=t)
+    baseline = pd.DataFrame({"A1": 5.0, "A2": 5.0}, index=t)
+    baseline.iloc[0] = [30.0, 20.0]  # 50 > 40 in one snapshot: 10 of 2040 = 0.5 %
+    country = pd.Series({"A1": "A", "A2": "A"})
+    got = subtract_existing_electric_heat(metered, baseline, country)
+    assert (got.iloc[0] == 0).all()
+    assert (got.iloc[1:] == metered.iloc[1:] * 0.75).all().all()
+
+
+def test_electric_heat_subtraction_rejects_large_excess():
+    from scripts.prepare_aro_network import subtract_existing_electric_heat
+
+    t = pd.date_range("2013-01-01", periods=1, freq="3h")
+    metered = pd.DataFrame({"A1": [10.0]}, index=t)
+    baseline = pd.DataFrame({"A1": [11.0]}, index=t)
+    with pytest.raises(ValueError, match="exceeds the metered load by more than"):
+        subtract_existing_electric_heat(metered, baseline, pd.Series({"A1": "A"}))

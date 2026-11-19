@@ -183,6 +183,59 @@ def electric_heat_supply(
     return pd.concat(supply, axis=1)
 
 
+def subtract_existing_electric_heat(
+    metered: pd.DataFrame,
+    baseline: pd.DataFrame,
+    country: pd.Series,
+    max_excess_share: float = 0.01,
+) -> pd.DataFrame:
+    """
+    Metered electricity load minus today's electric heating, spread by the metered load.
+
+    Per country and snapshot the subtracted amount is upstream's (`baseline` summed over the
+    country's nodes), but it is taken from each node in proportion to that node's metered load
+    instead of node by node. Upstream spreads the baseline by population while the metered
+    load is spread by the JRC Energy Atlas raster (`build_electricity_demand_base`); where a
+    node holds more population than metered demand, node-wise subtraction drove its load
+    negative -- a free generator inside an outage island. On the europe-pre-run islands: 14 of
+    130 nodes, down to -1.7 GW (Sicily -1.5 GW in 208 snapshots; Sardinia, Corsica,
+    Luxembourg); the NUTS1/2 build had 17 of 156. Spreading by metered load is also what the
+    partition does (`build_aro_country_peaks` subtracts per country, `build_aro_islands`
+    spreads the net electricity by the raster), so island loads agree with the partition.
+    Cost: every node loses today's heating with its country's hourly shape, not its own
+    climate's. memory: aro-electric-heat-subtraction
+
+    Where the national baseline exceeds the whole national metered load in a snapshot, at most
+    the metered load is removed (the country's non-heat electricity is zero there) and the
+    excess is logged. Europe-pre-run: only AL, 21 winter-night snapshots, 5 GWh = 0.26 % of its
+    baseline -- its metered profile lacks the night heating peak the heat profile puts there.
+    More than `max_excess_share` of any country's baseline raises: then the inputs disagree.
+    """
+    national = metered.T.groupby(country).sum().T
+    removed = baseline.T.groupby(country).sum().T
+    excess = (removed - national).clip(lower=0)
+    if excess.to_numpy().any():
+        share = excess.sum() / removed.sum().where(removed.sum() != 0)
+        hit = share[excess.sum() > 0]
+        logger.warning(
+            "Today's electric heating exceeds the whole metered load in "
+            + ", ".join(
+                f"{c} ({int((excess[c] > 0).sum())} snapshots, {hit[c]:.2%} of its baseline)"
+                for c in hit.index
+            )
+            + "; removing at most the metered load there."
+        )
+        if (hit > max_excess_share).any():
+            raise ValueError(
+                f"today's electric heating exceeds the metered load by more than "
+                f"{max_excess_share:.0%} of the baseline in {list(hit.index[hit > max_excess_share])}; "
+                "the baseline and the metered load disagree there"
+            )
+    # 0/0 only where both are zero; the clip removes at most the whole national load.
+    keep = (1 - removed / national.where(national != 0)).fillna(1.0).clip(lower=0)
+    return metered * keep[country.reindex(metered.columns)].to_numpy()
+
+
 def heat_system_inputs(
     n: pypsa.Network,
     heat_demand: pd.DataFrame,
@@ -1235,9 +1288,16 @@ if __name__ == "__main__":
             n.snapshots,
             temporal,
         )
-        # Assigning `metered - baseline` in one step both discards build_heat_demand's
-        # misaligned write and applies the correct one.
-        n.loads_t.p_set[electric_nodes] = metered - baseline[electric_nodes]
+        # Assigning in one step both discards build_heat_demand's misaligned write and applies
+        # the correct one. The amount is upstream's, per country and snapshot; only where it
+        # is taken from differs (see `subtract_existing_electric_heat`).
+        n.loads_t.p_set[electric_nodes] = subtract_existing_electric_heat(
+            metered,
+            baseline[electric_nodes],
+            n.buses.country.reindex(n.loads.bus[electric_nodes]).set_axis(
+                electric_nodes
+            ),
+        )
 
         weight = n.snapshot_weightings.objective.iloc[0]
         subtracted = baseline[electric_nodes].sum().sum() * weight
