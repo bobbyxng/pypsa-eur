@@ -307,3 +307,14 @@ def test_transit_country_with_two_ac_buses_refused():
     n = _network()
     with pytest.raises(ValueError, match="exactly one"):
         mark_transit_countries(n, ["DE"])
+
+
+def test_methanol_bus_without_country_is_no_border_crossing():
+    # add_methanol's buses carry only `location`; their turbines must not look cross-border
+    n = _network()
+    n.add("Bus", "DE 1AC methanol", carrier="methanol", location="DE 1AC")
+    n.buses.loc["DE 1AC methanol", "country"] = np.nan
+    n.add("Link", "DE 1AC OCGT methanol", bus0="DE 1AC methanol", bus1="DE 1AC",
+          carrier="OCGT methanol", p_nom=100.0)  # fmt: skip
+    _replace(n)
+    assert "DE 1AC OCGT methanol" in n.links.index

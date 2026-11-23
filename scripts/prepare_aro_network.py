@@ -570,9 +570,25 @@ def bus_islands(n: pypsa.Network) -> pd.Series:
     )
 
 
+def _bus_countries(n: pypsa.Network) -> pd.Series:
+    """
+    Bus -> country, a bus without one taking its `location`'s.
+
+    The methanol buses of `add_methanol` carry no country, only their AC node as
+    `location` (as PyPSARO's `aro.cut.bus_countries` handles them): read raw, every methanol
+    turbine would look like a border crossing.
+    """
+    country = n.buses.country.fillna("").astype(str)
+    if "location" in n.buses:
+        location = n.buses.location.fillna("").astype(str)
+        inherit = country.eq("") & location.isin(n.buses.index)
+        country[inherit] = country.reindex(location[inherit]).to_numpy()
+    return country
+
+
 def _cross_border_elements(n: pypsa.Network) -> pd.DataFrame:
     """Every cross-border AC line and forward DC link with today's capacity and cost."""
-    country = n.buses.country
+    country = _bus_countries(n)
     crossing_transformers = n.transformers.bus0.map(country) != n.transformers.bus1.map(
         country
     )
