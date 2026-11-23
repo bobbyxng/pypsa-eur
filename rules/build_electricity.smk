@@ -226,6 +226,8 @@ rule base_network:
         transformers=config_provider("transformers"),
         clustering=config_provider("clustering", "mode"),
         admin_levels=config_provider("clustering", "administrative"),
+        # fork: one bus shape per transit country, cut from its country shape
+        transit_countries=config_provider("aro", "transit_countries", default=[]),
     message:
         "Building base network"
     script:
@@ -668,6 +670,8 @@ rule build_transmission_projects:
         base_network=resources("networks/base.nc"),
         offshore_shapes=resources("offshore_shapes.geojson"),
         europe_shape=resources("europe_shape.geojson"),
+        # fork: project ends outside every modelled country are dropped, not snapped
+        country_shapes=resources("country_shapes.geojson"),
         transmission_projects=lambda w: [
             "data/transmission_projects/" + name
             for name, include in config_provider("transmission_projects", "include")(

@@ -58,6 +58,71 @@ rule build_aro_nuclear_fleet:
         scripts("build_aro_nuclear_fleet.py")
 
 
+# TYNDP 2026 reference grid (ENTSO-E scenario/CBA input data, `Line-data.zip`), from the
+# open-TYNDP mirror of the release of 2026-11-11 -- a DRAFT of the TYNDP 2026 package, pinned
+# by URL and MD5 so a later release cannot slip in. Not upstream's `retrieve_tyndp` (TYNDP
+# 2024 layout, a single sheet). memory: crossborder-capacity-vs-tyndp
+ARO_TYNDP2026_LINE_DATA = {
+    "url": "https://storage.googleapis.com/open-tyndp-data-store/2026/2026-11-11/inputs/Line-data.zip",
+    "md5": "8b06ff02dfec7066be32c34bceb8da98",
+    "folder": "data/aro_tyndp2026/2026-11-11",
+}
+
+
+rule retrieve_aro_tyndp2026_reference_grid:
+    input:
+        line_data=storage(ARO_TYNDP2026_LINE_DATA["url"]),
+    output:
+        zip=f"{ARO_TYNDP2026_LINE_DATA['folder']}/Line-data.zip",
+        reference_grid=f"{ARO_TYNDP2026_LINE_DATA['folder']}/ReferenceGrid_Electricity.xlsx",
+    log:
+        "logs/retrieve_aro_tyndp2026_reference_grid.log",
+    threads: 1
+    resources:
+        mem_mb=1000,
+    message:
+        "Retrieving the TYNDP 2026 reference grid (release 2026-11-11)"
+    run:
+        import hashlib
+
+        copy2(input["line_data"], output["zip"])
+        md5 = hashlib.md5(Path(output["zip"]).read_bytes()).hexdigest()
+        if md5 != ARO_TYNDP2026_LINE_DATA["md5"]:
+            raise ValueError(
+                f"{ARO_TYNDP2026_LINE_DATA['url']} has MD5 {md5}, expected "
+                f"{ARO_TYNDP2026_LINE_DATA['md5']}: the pinned release changed"
+            )
+        with ZipFile(output["zip"]) as archive:
+            member = next(
+                m
+                for m in archive.namelist()
+                if m.endswith("/ReferenceGrid_Electricity.xlsx")
+                and "__MACOSX" not in m
+            )
+            Path(output["reference_grid"]).write_bytes(archive.read(member))
+
+
+rule build_aro_border_ntc:
+    input:
+        reference_grid=rules.retrieve_aro_tyndp2026_reference_grid.output[
+            "reference_grid"
+        ],
+        subborders="data/aro_border_ntc_subborders.csv",
+    output:
+        border_ntc=resources("aro_border_ntc.csv"),
+    log:
+        logs("build_aro_border_ntc.log"),
+    threads: 1
+    resources:
+        mem_mb=2000,
+    params:
+        border_ntc=config_provider("aro", "border_ntc"),
+    message:
+        "Building cross-border NTCs from the TYNDP 2026 reference grid"
+    script:
+        scripts("build_aro_border_ntc.py")
+
+
 # Not part of any default target, and its output is copied into the config by hand rather
 # than read by a rule: the config stays a static, reviewable artifact and no ordinary run
 # depends on the 400 MB retrieval above.
@@ -131,8 +196,23 @@ rule prepare_aro_network:
         # from an electricity-only run. Without it, carrier `H2` keeps attach_stores' uncapped
         # *underground* cost at every node (dump/todos.md sec -3).
         h2_cavern=resources("salt_cavern_potentials.csv"),
+        border_ntc=lambda w: (
+            resources("aro_border_ntc.csv")
+            if config_provider("aro", "border_ntc", "enable")(w)
+            else []
+        ),
+        subborders=lambda w: (
+            "data/aro_border_ntc_subborders.csv"
+            if config_provider("aro", "border_ntc", "enable")(w)
+            else []
+        ),
     output:
         network=resources("networks/composed_aro_{horizon}.nc"),
+        # per border, sub-border and direction: TYNDP NTC vs the links built (empty, header
+        # only, with `aro.border_ntc.enable: false`)
+        border_ntc_reconciliation=resources(
+            "aro_border_ntc_reconciliation_{horizon}.csv"
+        ),
     log:
         logs("prepare_aro_network_{horizon}.log"),
     benchmark:
@@ -148,6 +228,8 @@ rule prepare_aro_network:
         aro_fix_cross_border_transmission=config_provider(
             "aro", "fix_cross_border_transmission"
         ),
+        aro_border_ntc=config_provider("aro", "border_ntc"),
+        aro_transit_countries=config_provider("aro", "transit_countries"),
         energy_totals_year=config_provider("energy", "energy_totals_year"),
         sector=config_provider("sector"),
         # The input network is already temporally aggregated (compose_network folds that in),

@@ -1485,6 +1485,8 @@ def merge_regions_recursive(
 def build_custom_admin_shapes(
     n: pypsa.Network,
     custom_busshapes: str,
+    country_shapes: str | None = None,
+    transit_countries: list[str] | tuple[str, ...] = (),
 ) -> gpd.GeoDataFrame:
     """
     Use custom bus shapes as the administrative regions the bus regions are cut along
@@ -1501,6 +1503,10 @@ def build_custom_admin_shapes(
     link is not in OSM. The bus is connected only by what later attaches to it (a
     transmission project landing there); the administrative path would instead drop a
     detached empty region and leave a hole.
+
+    A transit country (fork: `aro.transit_countries`, PyPSARO's outage partition has no
+    islands for it) must have no shape in the file; its country shape becomes the single
+    shape `<country> 1`, so it ends up as one node. The partition file stays untouched.
     """
     shapes = gpd.read_file(custom_busshapes)
     missing = {"name", "country"} - set(shapes.columns)
@@ -1508,6 +1514,28 @@ def build_custom_admin_shapes(
         raise ValueError(f"{custom_busshapes} lacks the column(s) {sorted(missing)}")
     shapes = shapes[shapes.country.isin(n.buses.country.unique())]
     shapes = shapes.to_crs(n.crs).set_index("name")[["country", "geometry"]]
+    transit = sorted(set(transit_countries) & set(n.buses.country.dropna()))
+    if transit:
+        clash = sorted(set(transit) & set(shapes.country))
+        if clash:
+            raise ValueError(
+                f"Transit countries {clash} have shapes in {custom_busshapes}; a transit "
+                "country is one node cut from its country shape, not partitioned"
+            )
+        if country_shapes is None:
+            raise ValueError("Transit countries need the country shapes")
+        countries = gpd.read_file(country_shapes).set_index("name").to_crs(n.crs)
+        absent = sorted(set(transit) - set(countries.index))
+        if absent:
+            raise ValueError(f"No country shape for transit countries {absent}")
+        extra = gpd.GeoDataFrame(
+            {"country": transit},
+            geometry=countries.loc[transit, "geometry"].values,
+            index=pd.Index([f"{c} 1" for c in transit], name="name"),
+            crs=n.crs,
+        )
+        shapes = pd.concat([shapes, extra])
+        logger.info(f"Transit countries as one bus shape each: {transit}")
     shapes.index.name = "admin"
     if not shapes.index.is_unique:
         raise ValueError(f"{custom_busshapes}: names are not unique")
@@ -1771,7 +1799,12 @@ if __name__ == "__main__":
 
     custom_busshapes = snakemake.input.get("custom_busshapes")
     if clustering == "custom_busshapes" and custom_busshapes:
-        admin_shapes = build_custom_admin_shapes(n, custom_busshapes)
+        admin_shapes = build_custom_admin_shapes(
+            n,
+            custom_busshapes,
+            country_shapes=country_shapes,
+            transit_countries=snakemake.params.get("transit_countries") or [],
+        )
     else:
         admin_shapes = build_admin_shapes(
             n,

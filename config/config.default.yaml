@@ -1635,6 +1635,11 @@ aro:
     reserve_inventory_carrying_rate: 0.07
   dc_losses: true
   fix_cross_border_transmission: true
+  border_ntc:
+    enable: false
+    year: 2050
+    efficiency: 0.999
+  transit_countries: []
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration/#overpass_api_cf
 overpass_api:

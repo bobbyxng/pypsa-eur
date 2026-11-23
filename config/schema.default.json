@@ -156,6 +156,35 @@
         }
       }
     },
+    "AroBorderNtcConfig": {
+      "additionalProperties": false,
+      "description": "Cross-border transmission as NTC links from the TYNDP 2026 reference grid.\n\nEvery AC line and DC link between two countries is replaced by one link per bus pair and\ndirection (forward + `-reversed`), carrier `NTC`, sized so that each border carries the\nTYNDP NTC of `year` in each direction, shared over its bus pairs by today's capacity.\nOffshore hybrid legs (`_OFF` nodes) and zone borders inside a country are left out.\n`data/aro_border_ntc_subborders.csv` splits the five country pairs where TYNDP's\nsub-borders are identifiable (separate synchronous areas, AC vs DC). PyPSARO's\n`memory: crossborder-capacity-vs-tyndp` documents the choice.",
+      "properties": {
+        "enable": {
+          "default": false,
+          "description": "Replace cross-border lines and DC links by NTC links. Off keeps today's OSM + `transmission_projects` borders.",
+          "type": "boolean"
+        },
+        "year": {
+          "default": 2050,
+          "description": "Reference-grid year (sheet `Year_<year>`): 2025 NTC plus the projects that pass ENTSO-E's maturity criteria by then.",
+          "enum": [
+            2030,
+            2035,
+            2040,
+            2050
+          ],
+          "type": "integer"
+        },
+        "efficiency": {
+          "default": 0.999,
+          "description": "Efficiency of both directions. Just below 1, so power sent round a loop of NTC links (or out and back over one bus pair) is never free.",
+          "exclusiveMinimum": 0.0,
+          "maximum": 1.0,
+          "type": "number"
+        }
+      }
+    },
     "AroConfig": {
       "description": "Configuration for top-level `aro` settings.",
       "properties": {
@@ -177,7 +206,7 @@
             },
             "exclude": {
               "default": [],
-              "description": "Countries left out of the partition. BA, ME and XK (no LAU, thin sub-transmission data in OSM) are no longer modelled at all, so nothing is left out by default.",
+              "description": "Countries left out of the partition. BA, ME and XK (no LAU, thin sub-transmission data in OSM) are not partitioned: XK is not modelled, BA and ME enter a pre-run only as `aro.transit_countries`, outside the partition's config. So nothing is left out by default.",
               "items": {
                 "type": "string"
               },
@@ -488,6 +517,43 @@
           "default": true,
           "description": "Make every line and DC link between two countries non-extendable at its input capacity (today + `transmission_projects`), while lines inside a country keep whatever `transmission_limit` gives them (e.g. extendable under `vopt`). The study's grid is exogenous at the borders, where the European pre-run is cut into country runs. No effect on single-country networks. Added 2026-10-20.",
           "type": "boolean"
+        },
+        "border_ntc": {
+          "additionalProperties": false,
+          "description": "Cross-border transmission as NTC links from the TYNDP 2026 reference grid.\n\nEvery AC line and DC link between two countries is replaced by one link per bus pair and\ndirection (forward + `-reversed`), carrier `NTC`, sized so that each border carries the\nTYNDP NTC of `year` in each direction, shared over its bus pairs by today's capacity.\nOffshore hybrid legs (`_OFF` nodes) and zone borders inside a country are left out.\n`data/aro_border_ntc_subborders.csv` splits the five country pairs where TYNDP's\nsub-borders are identifiable (separate synchronous areas, AC vs DC). PyPSARO's\n`memory: crossborder-capacity-vs-tyndp` documents the choice.",
+          "properties": {
+            "enable": {
+              "default": false,
+              "description": "Replace cross-border lines and DC links by NTC links. Off keeps today's OSM + `transmission_projects` borders.",
+              "type": "boolean"
+            },
+            "year": {
+              "default": 2050,
+              "description": "Reference-grid year (sheet `Year_<year>`): 2025 NTC plus the projects that pass ENTSO-E's maturity criteria by then.",
+              "enum": [
+                2030,
+                2035,
+                2040,
+                2050
+              ],
+              "type": "integer"
+            },
+            "efficiency": {
+              "default": 0.999,
+              "description": "Efficiency of both directions. Just below 1, so power sent round a loop of NTC links (or out and back over one bus pair) is never free.",
+              "exclusiveMinimum": 0.0,
+              "maximum": 1.0,
+              "type": "number"
+            }
+          }
+        },
+        "transit_countries": {
+          "default": [],
+          "description": "Countries in `countries` that are modelled as one transit node each: they carry load, generation and borders but are no outage island. The custom bus-shape file needs no shape for them; their country shape becomes the single bus shape `<country> 1`. Marked by the bus attribute `transit` and `n.meta['aro_transit_countries']`, which PyPSARO reads to keep them out of country runs and island statistics. A transit country must have its own TYNDP node when `border_ntc` is on (so not XK, which TYNDP folds into RS).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       }
     },
@@ -692,7 +758,7 @@
         },
         "exclude": {
           "default": [],
-          "description": "Countries left out of the partition. BA, ME and XK (no LAU, thin sub-transmission data in OSM) are no longer modelled at all, so nothing is left out by default.",
+          "description": "Countries left out of the partition. BA, ME and XK (no LAU, thin sub-transmission data in OSM) are not partitioned: XK is not modelled, BA and ME enter a pre-run only as `aro.transit_countries`, outside the partition's config. So nothing is left out by default.",
           "items": {
             "type": "string"
           },
@@ -15422,7 +15488,7 @@
             },
             "exclude": {
               "default": [],
-              "description": "Countries left out of the partition. BA, ME and XK (no LAU, thin sub-transmission data in OSM) are no longer modelled at all, so nothing is left out by default.",
+              "description": "Countries left out of the partition. BA, ME and XK (no LAU, thin sub-transmission data in OSM) are not partitioned: XK is not modelled, BA and ME enter a pre-run only as `aro.transit_countries`, outside the partition's config. So nothing is left out by default.",
               "items": {
                 "type": "string"
               },
@@ -15733,6 +15799,43 @@
           "default": true,
           "description": "Make every line and DC link between two countries non-extendable at its input capacity (today + `transmission_projects`), while lines inside a country keep whatever `transmission_limit` gives them (e.g. extendable under `vopt`). The study's grid is exogenous at the borders, where the European pre-run is cut into country runs. No effect on single-country networks. Added 2026-10-20.",
           "type": "boolean"
+        },
+        "border_ntc": {
+          "additionalProperties": false,
+          "description": "Cross-border transmission as NTC links from the TYNDP 2026 reference grid.\n\nEvery AC line and DC link between two countries is replaced by one link per bus pair and\ndirection (forward + `-reversed`), carrier `NTC`, sized so that each border carries the\nTYNDP NTC of `year` in each direction, shared over its bus pairs by today's capacity.\nOffshore hybrid legs (`_OFF` nodes) and zone borders inside a country are left out.\n`data/aro_border_ntc_subborders.csv` splits the five country pairs where TYNDP's\nsub-borders are identifiable (separate synchronous areas, AC vs DC). PyPSARO's\n`memory: crossborder-capacity-vs-tyndp` documents the choice.",
+          "properties": {
+            "enable": {
+              "default": false,
+              "description": "Replace cross-border lines and DC links by NTC links. Off keeps today's OSM + `transmission_projects` borders.",
+              "type": "boolean"
+            },
+            "year": {
+              "default": 2050,
+              "description": "Reference-grid year (sheet `Year_<year>`): 2025 NTC plus the projects that pass ENTSO-E's maturity criteria by then.",
+              "enum": [
+                2030,
+                2035,
+                2040,
+                2050
+              ],
+              "type": "integer"
+            },
+            "efficiency": {
+              "default": 0.999,
+              "description": "Efficiency of both directions. Just below 1, so power sent round a loop of NTC links (or out and back over one bus pair) is never free.",
+              "exclusiveMinimum": 0.0,
+              "maximum": 1.0,
+              "type": "number"
+            }
+          }
+        },
+        "transit_countries": {
+          "default": [],
+          "description": "Countries in `countries` that are modelled as one transit node each: they carry load, generation and borders but are no outage island. The custom bus-shape file needs no shape for them; their country shape becomes the single bus shape `<country> 1`. Marked by the bus attribute `transit` and `n.meta['aro_transit_countries']`, which PyPSARO reads to keep them out of country runs and island statistics. A transit country must have its own TYNDP node when `border_ntc` is on (so not XK, which TYNDP folds into RS).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       }
     },

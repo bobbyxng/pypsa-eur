@@ -58,6 +58,7 @@ path = [
     "data/entsoe_unit_mapping.csv",
     "data/entsoe_unit_closures.csv",
     "data/aro_custom_costs.csv",
+    "data/aro_border_ntc_subborders.csv",
 ]
 SPDX-FileCopyrightText = "The PyPSA-Eur Authors"
 SPDX-License-Identifier = "CC0-1.0"

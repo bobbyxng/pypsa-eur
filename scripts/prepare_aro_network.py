@@ -16,7 +16,10 @@ Independent layers, fork-specific additions to upstream PyPSA-Eur:
 2. the H2 cavern-vs-tank split that `attach_stores` omits on the electricity path
    (`cap_hydrogen_storage`, gated on `sector.hydrogen_underground_storage`);
 3. optional H2 turbines (`aro.h2_turbine.technologies`);
-4. optional purchased renewable methanol, local tanks and turbines (`aro.methanol`).
+4. optional purchased renewable methanol, local tanks and turbines (`aro.methanol`);
+5. optional cross-border transmission as NTC links from the TYNDP 2026 reference grid
+   (`aro.border_ntc`, `replace_cross_border_with_ntc_links`), and the transit-country
+   flag (`aro.transit_countries`, `mark_transit_countries`).
 
 (2) runs unconditionally so the no-heat baseline and the heat run differ in exactly one thing.
 
@@ -96,6 +99,22 @@ CAVERN_MAX_PER_SITE_MWH = 1e9
 # annualised AND scaled to the composed network's modelled horizon.
 METHANOL_MWH_PER_M3 = 15.8 / 3.6
 TANK_TECHNOLOGY = "General liquid hydrocarbon storage (product)"
+
+# Cross-border transmission as NTC links (`aro.border_ntc`). memory: crossborder-capacity-vs-tyndp
+NTC_CARRIER = "NTC"
+NTC_COLOR = "#6c9459"
+RECONCILIATION_COLUMNS = [
+    "border",
+    "subborder",
+    "from",
+    "to",
+    "action",
+    "tyndp_mw",
+    "model_mw",
+    "today_mw",
+    "bus_pairs",
+    "tyndp_borders",
+]
 
 
 def cop_heat_system(heat_system: HeatSystem) -> str:
@@ -523,7 +542,7 @@ def fix_cross_border_transmission(n: pypsa.Network) -> None:
     country = n.buses.country
     cross_lines = n.lines.bus0.map(country) != n.lines.bus1.map(country)
     n.lines.loc[cross_lines, "s_nom_extendable"] = False
-    dc = n.links.carrier == "DC"
+    dc = n.links.carrier.isin(["DC", NTC_CARRIER])
     cross_links = dc & (n.links.bus0.map(country) != n.links.bus1.map(country))
     n.links.loc[cross_links, "p_nom_extendable"] = False
     logger.info(
@@ -536,6 +555,370 @@ def fix_cross_border_transmission(n: pypsa.Network) -> None:
         (~cross_lines).sum(),
         (dc & ~cross_links).sum(),
     )
+
+
+def bus_islands(n: pypsa.Network) -> pd.Series:
+    """Outage island (custom bus-shape name) of each bus: `DK 1AC` -> `DK 1`."""
+    names = n.buses.index.to_series()
+    carriers = n.buses.carrier.fillna("")
+    return pd.Series(
+        [
+            name[: -len(c)] if c and name.endswith(c) else name
+            for name, c in zip(names, carriers)
+        ],
+        index=n.buses.index,
+    )
+
+
+def _cross_border_elements(n: pypsa.Network) -> pd.DataFrame:
+    """Every cross-border AC line and forward DC link with today's capacity and cost."""
+    country = n.buses.country
+    crossing_transformers = n.transformers.bus0.map(country) != n.transformers.bus1.map(
+        country
+    )
+    if crossing_transformers.any():
+        raise ValueError(
+            "Transformers cross a border, which border_ntc cannot replace: "
+            f"{list(n.transformers.index[crossing_transformers])}"
+        )
+    other = n.links[
+        (n.links.carrier != "DC")
+        & (n.links.bus0.map(country) != n.links.bus1.map(country))
+        & n.links.bus0.isin(country.index)
+        & n.links.bus1.isin(country.index)
+    ]
+    if not other.empty:
+        raise ValueError(
+            "Links other than DC cross a border, which border_ntc does not handle: "
+            f"{sorted(other.carrier.unique())} ({list(other.index[:5])})"
+        )
+
+    lines = n.lines[n.lines.bus0.map(country) != n.lines.bus1.map(country)]
+    reversed_ = n.links.get("reversed", pd.Series(False, index=n.links.index))
+    reversed_ = reversed_.fillna(False).astype(bool)
+    links = n.links[
+        (n.links.carrier == "DC")
+        & ~reversed_
+        & (n.links.bus0.map(country) != n.links.bus1.map(country))
+    ]
+    p_max_pu = links.p_max_pu if "p_max_pu" in links else 1.0
+    elements = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "component": "Line",
+                    "kind": "AC",
+                    "bus0": lines.bus0,
+                    "bus1": lines.bus1,
+                    "capacity": lines.s_nom * lines.s_max_pu,
+                    "capex": lines.capital_cost * lines.s_nom,
+                    "length": lines.length,
+                }
+            ),
+            pd.DataFrame(
+                {
+                    "component": "Link",
+                    "kind": "DC",
+                    "bus0": links.bus0,
+                    "bus1": links.bus1,
+                    "capacity": links.p_nom * p_max_pu,
+                    "capex": links.capital_cost * links.p_nom,
+                    "length": links.length,
+                }
+            ),
+        ]
+    )
+    elements["country0"] = elements.bus0.map(country)
+    elements["country1"] = elements.bus1.map(country)
+    elements["border"] = [
+        "-".join(sorted(p)) for p in zip(elements.country0, elements.country1)
+    ]
+    return elements
+
+
+def _assign_subborders(
+    elements: pd.DataFrame, subborders: pd.DataFrame, islands: pd.Series
+) -> pd.Series:
+    """Sub-border of each element from the table's selectors; "" for unsplit borders."""
+    known = set(islands)
+    out = pd.Series("", index=elements.index, dtype=object)
+    for border, table in subborders.groupby("border"):
+        on_border = elements.index[elements.border == border]
+        hits = pd.DataFrame(False, index=on_border, columns=table.subborder)
+        rest = None
+        for _, s in table.iterrows():
+            kind, _, value = str(s.select).partition(":")
+            if kind == "island":
+                if value not in known:
+                    raise ValueError(
+                        f"Sub-border {border}/{s.subborder} selects island '{value}', "
+                        "which is no bus of the network (bus shapes renamed?)"
+                    )
+                e = elements.loc[on_border]
+                hits[s.subborder] = (e.bus0.map(islands) == value) | (
+                    e.bus1.map(islands) == value
+                )
+            elif kind == "kind":
+                hits[s.subborder] = elements.loc[on_border, "kind"] == value
+            elif kind == "rest":
+                rest = s.subborder
+            else:
+                raise ValueError(f"Unknown selector '{s.select}' for {border}")
+        if rest is not None:
+            hits[rest] = ~hits.drop(columns=rest).any(axis=1)
+        counts = hits.sum(axis=1)
+        if (counts != 1).any():
+            bad = list(counts.index[counts != 1])
+            raise ValueError(
+                f"Elements on {border} match {set(counts[counts != 1])} sub-borders "
+                f"instead of one: {bad}"
+            )
+        out[on_border] = hits.idxmax(axis=1)
+    return out
+
+
+def replace_cross_border_with_ntc_links(
+    n: pypsa.Network,
+    ntc: pd.DataFrame,
+    subborders: pd.DataFrame,
+    efficiency: float = 0.999,
+) -> pd.DataFrame:
+    """
+    Replace every cross-border AC line and DC link by NTC links; return a reconciliation.
+
+    Per bus pair across a border there is one forward link and its `-reversed` twin,
+    carrier `NTC`, non-extendable, `efficiency` both ways. Each border (or sub-border) gets
+    its TYNDP NTC per direction from `ntc` (`build_aro_border_ntc`), shared over its bus
+    pairs in proportion to today's capacity (AC `s_nom * s_max_pu`, DC `p_nom`): where power
+    enters a country stays where it is today. The forward link points in the direction with
+    the larger NTC and carries today's capacity-weighted cost per MW, so the border's capex
+    is that cost times the larger direction; the twin costs nothing, as in `add_dc_losses`.
+    A sub-border with action `keep` (the SACOI legs through Corsica) keeps today's capacity
+    in both directions. The replaced elements are listed per link in `replaces`.
+
+    Refused, not guessed: a border with elements but no TYNDP value, a TYNDP value to share
+    over zero capacity, a bus pair split over two sub-borders. TYNDP borders without any
+    element (a project not in the grid, e.g. DE-GR) are logged and reported. Must run AFTER
+    `add_dc_losses`, whose `-reversed` twins are removed with their forward link.
+    PyPSARO's `memory: crossborder-capacity-vs-tyndp`.
+    """
+    country = n.buses.country
+    elements = _cross_border_elements(n)
+    if elements.empty:
+        logger.info("border_ntc: no cross-border elements, nothing replaced.")
+        return pd.DataFrame(columns=RECONCILIATION_COLUMNS)
+    islands = bus_islands(n)
+    elements["subborder"] = _assign_subborders(elements, subborders, islands)
+    action = {
+        (r.border, r.subborder): r.action for r in subborders.itertuples(index=False)
+    }
+    elements["action"] = [
+        action.get((b, s), "scale") for b, s in zip(elements.border, elements.subborder)
+    ]
+
+    pair = [tuple(sorted(p)) for p in zip(elements.bus0, elements.bus1)]
+    elements["busA"] = [p[0] for p in pair]
+    elements["busB"] = [p[1] for p in pair]
+    split_pairs = elements.groupby(["busA", "busB"]).subborder.nunique()
+    if (split_pairs > 1).any():
+        raise ValueError(
+            "Bus pairs whose elements fall into two sub-borders: "
+            f"{list(split_pairs.index[split_pairs > 1])}"
+        )
+    elements["weighted_length"] = elements.length.fillna(0.0) * elements.capacity
+    pairs = (
+        elements.reset_index(names="name")
+        .groupby(["busA", "busB"])
+        .agg(
+            border=("border", "first"),
+            subborder=("subborder", "first"),
+            action=("action", "first"),
+            capacity=("capacity", "sum"),
+            capex=("capex", "sum"),
+            weighted_length=("weighted_length", "sum"),
+            replaces=("name", lambda x: " ".join(sorted(map(str, x)))),
+        )
+        .reset_index()
+    )
+    pairs["countryA"] = pairs.busA.map(country)
+    pairs["countryB"] = pairs.busB.map(country)
+
+    value = ntc.set_index(["border", "subborder", "from", "to"]).p_nom
+    pairs["pAB"] = np.nan
+    pairs["pBA"] = np.nan
+    rows = []
+    for (border, subborder), g in pairs.groupby(["border", "subborder"]):
+        act = g.action.iloc[0]
+        x, y = border.split("-")
+        total = g.capacity.sum()
+        label = border + (f"/{subborder}" if subborder else "")
+        ntc_xy = value.get((border, subborder, x, y))
+        ntc_yx = value.get((border, subborder, y, x))
+        if act == "keep":
+            xy = yx = g.capacity
+        else:
+            if ntc_xy is None or ntc_yx is None:
+                raise ValueError(
+                    f"Border {label} has {len(g)} bus pair(s) but no TYNDP NTC "
+                    "(a TYNDP node missing, or a country TYNDP folds into another, e.g. XK)"
+                )
+            if total <= 0:
+                raise ValueError(
+                    f"Border {label}: no capacity today to share the NTC over"
+                )
+            xy = ntc_xy * g.capacity / total
+            yx = ntc_yx * g.capacity / total
+        a_is_x = g.countryA == x
+        pairs.loc[g.index, "pAB"] = xy.where(a_is_x, yx)
+        pairs.loc[g.index, "pBA"] = yx.where(a_is_x, xy)
+        for frm, to, cap, tyndp in [(x, y, xy, ntc_xy), (y, x, yx, ntc_yx)]:
+            rows.append(
+                {
+                    "border": border,
+                    "subborder": subborder,
+                    "from": frm,
+                    "to": to,
+                    "action": act,
+                    "tyndp_mw": np.nan if tyndp is None else tyndp,
+                    "model_mw": cap.sum(),
+                    "today_mw": total,
+                    "bus_pairs": len(g),
+                    "tyndp_borders": "",
+                }
+            )
+    if pairs[["pAB", "pBA"]].isna().any().any():
+        raise ValueError("border_ntc: a bus pair was left without capacity")
+    zero = pairs.index[(pairs.pAB <= 0) & (pairs.pBA <= 0)]
+    if len(zero):
+        raise ValueError(
+            "Bus pairs whose TYNDP NTC is zero both ways (remove the elements or the "
+            f"border instead): {[(pairs.busA[i], pairs.busB[i]) for i in zero]}"
+        )
+
+    # forward = the larger direction
+    flip = pairs.pBA > pairs.pAB
+    bus0 = pairs.busA.where(~flip, pairs.busB)
+    bus1 = pairs.busB.where(~flip, pairs.busA)
+    forward = pairs.pAB.where(~flip, pairs.pBA)
+    backward = pairs.pBA.where(~flip, pairs.pAB)
+    names = (bus0 + "-" + bus1 + " " + NTC_CARRIER).values
+    length = pairs.weighted_length / pairs.capacity.where(pairs.capacity > 0)
+    cost_per_mw = pairs.capex / pairs.capacity.where(pairs.capacity > 0)
+
+    # remove the replaced elements (DC twins with their forward link)
+    dc = elements.index[elements.component == "Link"]
+    twins = [f"{name}-reversed" for name in dc if f"{name}-reversed" in n.links.index]
+    n.remove("Line", elements.index[elements.component == "Line"])
+    n.remove("Link", list(dc) + twins)
+
+    if NTC_CARRIER not in n.carriers.index:
+        n.add(
+            "Carrier",
+            NTC_CARRIER,
+            nice_name="Interconnector (NTC)",
+            color=NTC_COLOR,
+        )
+    common = dict(
+        carrier=NTC_CARRIER,
+        efficiency=efficiency,
+        p_min_pu=0.0,
+        p_max_pu=1.0,
+        p_nom_extendable=False,
+        length=length.fillna(0.0).values,
+        replaces=pairs.replaces.values,
+        border=pairs.border.values,
+        subborder=pairs.subborder.values,
+    )
+    n.add(
+        "Link",
+        names,
+        bus0=bus0.values,
+        bus1=bus1.values,
+        p_nom=forward.values,
+        capital_cost=cost_per_mw.fillna(0.0).values,
+        reversed=False,
+        **common,
+    )
+    n.add(
+        "Link",
+        [f"{name}-reversed" for name in names],
+        bus0=bus1.values,
+        bus1=bus0.values,
+        p_nom=backward.values,
+        capital_cost=0.0,
+        reversed=True,
+        **common,
+    )
+
+    # TYNDP borders between modelled countries that have no element at all
+    modelled = set(country.dropna()) - {""}
+    covered = set(zip(pairs.border, pairs.subborder))
+    missing = ntc[
+        [
+            set(b.split("-")) <= modelled and (b, s) not in covered
+            for b, s in zip(ntc.border, ntc.subborder)
+        ]
+    ]
+    for _, r in missing.iterrows():
+        rows.append(
+            {
+                "border": r.border,
+                "subborder": r.subborder,
+                "from": r["from"],
+                "to": r.to,
+                "action": "no element",
+                "tyndp_mw": r.p_nom,
+                "model_mw": 0.0,
+                "today_mw": 0.0,
+                "bus_pairs": 0,
+                "tyndp_borders": r.tyndp_borders,
+            }
+        )
+    if not missing.empty:
+        lost = missing.groupby("border").p_nom.max()
+        logger.warning(
+            "TYNDP borders between modelled countries without any element in the grid "
+            "(left out): "
+            + ", ".join(f"{b} {v / 1e3:.2f} GW" for b, v in lost.items() if v > 0)
+        )
+    report = pd.DataFrame(rows, columns=RECONCILIATION_COLUMNS)
+    tb = ntc.groupby(["border", "subborder"]).tyndp_borders.first()
+    report["tyndp_borders"] = [
+        r if r else tb.get((b, s), "")
+        for r, b, s in zip(report.tyndp_borders, report.border, report.subborder)
+    ]
+    scaled = report[report.action == "scale"]
+    gap = (scaled.model_mw - scaled.tyndp_mw).abs().max() if len(scaled) else 0.0
+    if gap > 1e-3:
+        raise ValueError(f"border_ntc: links miss the TYNDP NTC by up to {gap:.3f} MW")
+    logger.info(
+        f"border_ntc: {len(elements)} cross-border elements -> {len(pairs)} bus pairs "
+        f"({2 * len(pairs)} NTC links); {pairs.capacity.sum() / 1e3:.1f} GW today -> "
+        f"{(forward.sum() + backward.sum()) / 2e3:.1f} GW (mean of both directions)."
+    )
+    return report
+
+
+def mark_transit_countries(n: pypsa.Network, transit: list[str]) -> None:
+    """
+    Flag the buses of the transit countries (`aro.transit_countries`) for PyPSARO.
+
+    A transit country carries load, generation and borders but is no outage island: no
+    country run, no island statistics. Each must be exactly one AC bus, which
+    `base_network.build_custom_admin_shapes` makes of its country shape. The flag is the
+    bus attribute `transit` and `n.meta["aro_transit_countries"]`.
+    """
+    n.buses["transit"] = n.buses.country.isin(transit)
+    for c in transit:
+        ac = n.buses.index[(n.buses.country == c) & (n.buses.carrier == "AC")]
+        if len(ac) != 1:
+            raise ValueError(
+                f"Transit country {c} has {len(ac)} AC buses, expected exactly one "
+                "(is it in `countries`, and without shapes in the custom bus-shape file?)"
+            )
+    n.meta["aro_transit_countries"] = list(transit)
+    if transit:
+        logger.info(f"Transit countries marked: {list(transit)}")
 
 
 def add_endogenous_heat(
@@ -1212,6 +1595,18 @@ if __name__ == "__main__":
     add_methanol(n, costs, snakemake.params.aro_methanol)
     if snakemake.params.aro_dc_losses:
         add_dc_losses(n, snakemake.params.sector["transmission_efficiency"]["DC"])
+    border_ntc = snakemake.params.aro_border_ntc
+    if border_ntc["enable"]:
+        reconciliation = replace_cross_border_with_ntc_links(
+            n,
+            pd.read_csv(snakemake.input.border_ntc, keep_default_na=False),
+            pd.read_csv(snakemake.input.subborders, keep_default_na=False),
+            efficiency=border_ntc["efficiency"],
+        )
+    else:
+        reconciliation = pd.DataFrame(columns=RECONCILIATION_COLUMNS)
+    reconciliation.to_csv(snakemake.output.border_ntc_reconciliation, index=False)
+    mark_transit_countries(n, snakemake.params.aro_transit_countries or [])
     if snakemake.params.aro_fix_cross_border_transmission:
         fix_cross_border_transmission(n)
 

@@ -358,6 +358,49 @@ def remove_projects_outside_countries(lines, europe_shape):
     return lines
 
 
+def remove_projects_ending_outside_countries(
+    lines, country_shapes, offshore_shapes, buffer_m=5000.0
+):
+    """
+    Drop projects with an end outside every modelled country and offshore region (fork).
+
+    `remove_projects_outside_countries` tests against `europe_shape`, whose holes are
+    filled: a country left out in the middle of the modelled area (Bosnia, Montenegro or
+    Kosovo when not modelled) is inside it, so a project ending there passes and its end is
+    snapped to the nearest bus of a NEIGHBOUR, up to 0.4 deg away. On the pre-run of
+    2026-11-17 that made TYNDP2020_57 and _58 fictitious 3.4 GW lines inside Serbia and
+    _59 (Lastva-Pljevlja, all in Montenegro) a fictitious Albania-Serbia border. Each end
+    is tested against the modelled country shapes (buffered by `buffer_m` for coordinate
+    noise at borders and coasts) and the offshore regions. PyPSARO's
+    `memory: crossborder-capacity-vs-tyndp`.
+    """
+    covered = pd.concat(
+        [
+            country_shapes.to_crs(3035).buffer(buffer_m),
+            offshore_shapes.to_crs(3035).geometry,
+        ]
+    ).union_all()
+    covered = shapely.prepared.prep(covered)
+    ends = []
+    for port in [0, 1]:
+        coords = lines["geometry"].apply(
+            lambda x: pd.Series(
+                get_bus_coords_from_port(x, port=port), index=["x", "y"]
+            )
+        )
+        points = gpd.GeoSeries(
+            gpd.points_from_xy(coords.x, coords.y), index=lines.index, crs=4326
+        ).to_crs(3035)
+        ends.append(points.apply(covered.contains))
+    inside = ends[0] & ends[1]
+    if not inside.all():
+        logger.warning(
+            "Project lines ending outside the modelled countries (skipping, not snapping "
+            "to a neighbour): " + ", ".join(str(i) for i in lines.index[~inside])
+        )
+    return lines.loc[inside]
+
+
 def is_similar(ds1, ds2, percentage=10):
     """
     Check if values in series ds2 are within a specified percentage of series
@@ -393,11 +436,16 @@ def add_projects(
     status=["confirmed", "under construction"],
     skip=[],
     exclude=(),
+    country_shapes=None,
 ):
     lines_dict = get_project_files(path, skip=skip)
     for key, lines in lines_dict.items():
         logger.info(f"Processing {key.replace('_', ' ')} projects from {plan}.")
         lines = remove_projects_outside_countries(lines, europe_shape)
+        if country_shapes is not None and not lines.empty:
+            lines = remove_projects_ending_outside_countries(
+                lines, country_shapes, offshore_shapes
+            )
         if isinstance(status, dict):
             status = status[plan]
         lines = lines.loc[lines.project_status.isin(status)]
@@ -491,6 +539,11 @@ if __name__ == "__main__":
     offshore_shapes = gpd.read_file(snakemake.input.offshore_shapes).rename(
         {"name": "country"}, axis=1
     )
+    country_shapes = (
+        gpd.read_file(snakemake.input.country_shapes)
+        if "country_shapes" in snakemake.input.keys()
+        else None
+    )
 
     transmission_projects = snakemake.params.transmission_projects
     projects = [
@@ -516,6 +569,7 @@ if __name__ == "__main__":
                 status=transmission_projects["status"],
                 skip=transmission_projects["skip"],
                 exclude=transmission_projects.get("exclude") or [],
+                country_shapes=country_shapes,
             )
         )
     if not new_lines_df.empty:

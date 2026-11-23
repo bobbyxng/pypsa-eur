@@ -1,0 +1,11 @@
+border,subborder,tyndp_borders,select,action,note
+DE-DK,east,DE00-DKE1,island:DK 1,scale,"Kontek DC to DK East (Zealand, Bornholm), a synchronous area of its own"
+DE-DK,west,DE00-DKW1,rest,scale,AC lines to DK West (Jutland)
+DK-SE,east,DKE1-SE04,island:DK 1,scale,Oresund AC from DK East
+DK-SE,west,DKW1-SE03,rest,scale,Konti-Skan DC from DK West
+FI-SE,ac,FI00-SE01 FI00-SE02,kind:AC,scale,AC lines in the north; cluster centroids put the Swedish side in the wrong zone so the element kind decides
+FI-SE,dc,FI00-SE03,kind:DC,scale,Fenno-Skan DC
+GB-IE,ni,IE00-UKNI,island:GB 9,scale,AC lines Northern Ireland - Ireland (one synchronous area)
+GB-IE,gb,IE00-UK00,rest,scale,DC links Great Britain - Ireland
+FR-IT,corsica,FR15-ITCO,island:FR 13,keep,"SACOI legs Sardinia - Corsica - Tuscany: TYNDP books Sardinia - Tuscany as Italy-internal (ITSA-ITCO-ITCN) and lists Corsica's own tap at 25/100 MW; scaling the legs to that would cut Sardinia's DC link, so they keep today's capacity"
+FR-IT,mainland,FR00-ITN1,rest,scale,AC lines France - northern Italy
