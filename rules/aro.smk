@@ -61,7 +61,9 @@ rule build_aro_nuclear_fleet:
 # TYNDP 2026 reference grid (ENTSO-E scenario/CBA input data, `Line-data.zip`), from the
 # open-TYNDP mirror of the release of 2026-11-11 -- a DRAFT of the TYNDP 2026 package, pinned
 # by URL and MD5 so a later release cannot slip in. Not upstream's `retrieve_tyndp` (TYNDP
-# 2024 layout, a single sheet). memory: crossborder-capacity-vs-tyndp
+# 2024 layout, a single sheet). Its ReferenceGrid_Electricity.xlsx is byte-identical to the
+# one in ENTSO-E's own TYNDP 2026 download (MD5 19a5ac1c..., checked 2026-11-24).
+# memory: crossborder-capacity-vs-tyndp
 ARO_TYNDP2026_LINE_DATA = {
     "url": "https://storage.googleapis.com/open-tyndp-data-store/2026/2026-11-11/inputs/Line-data.zip",
     "md5": "8b06ff02dfec7066be32c34bceb8da98",
